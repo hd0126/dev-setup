@@ -1,0 +1,42 @@
+name: 🐛 문제 신고 (Bug report)
+description: 설치·실행 중 오류가 났을 때 (초보 환영 — OS와 에러만 적으면 됩니다)
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "문제를 알려주셔서 감사합니다 🙏 아래만 채워주세요."
+  - type: dropdown
+    id: os
+    attributes:
+      label: 운영체제 (OS)
+      options:
+        - "Windows"
+        - "Ubuntu / Debian (Linux)"
+        - "macOS"
+        - "기타 / 모름"
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: 실행한 명령
+      description: 복사해서 그대로 붙여넣어 주세요.
+      placeholder: "irm https://raw.githubusercontent.com/hd0126/dev-setup/main/install.ps1 | iex"
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: 에러 메시지 / 로그
+      description: "빨간 글씨나 [FAILED] 줄을 그대로 붙여넣어 주세요. (Windows는 %TEMP% 폴더의 omc-install-*.log 내용도 도움됩니다.)"
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: 그 외 (선택)
+      description: 스크린샷, 추가 설명 등 자유롭게.
+    validations:
+      required: false

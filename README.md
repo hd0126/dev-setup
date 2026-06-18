@@ -1,5 +1,11 @@
 # PowerShell Profile & Dev Environment Setup
 
+> 🐛 **문제가 생겼나요?** → **[이슈 열기](https://github.com/hd0126/dev-setup/issues/new/choose)** (운영체제와 에러 메시지만 적으면 됩니다 — 초보 환영!)
+>
+> ⭐ **도움이 됐다면** → 이 페이지 **우측 상단 Star ⭐** 를 눌러주세요!
+>
+> 🤝 직접 고칠 수 있다면 **[Pull Request](https://github.com/hd0126/dev-setup/pulls)** 도 환영합니다.
+
 ## 목차
 
 - [처음 설치 (신규)](#처음-설치-신규)

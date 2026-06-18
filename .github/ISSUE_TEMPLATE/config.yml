@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: "⭐ 마음에 드셨나요? Star를 눌러주세요"
+    url: https://github.com/hd0126/dev-setup
+    about: 우측 상단 Star ⭐ 한 번이 큰 힘이 됩니다 (이슈 아님).

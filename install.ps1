@@ -564,6 +564,10 @@ if ($failedPkgs.Count -eq 0) {
     Write-Host ""
     Write-Host "Tip: For 'Store conflict' errors, uninstall the Microsoft Store version first," -ForegroundColor DarkGray
     Write-Host "     then re-run this script and select only the failed packages." -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "해결이 안 되면 이슈를 열어주세요 (OS / 위 [FAILED] 줄 / 로그 첨부 — 초보 환영):" -ForegroundColor Cyan
+    Write-Host "  https://github.com/hd0126/dev-setup/issues/new/choose" -ForegroundColor Cyan
+    Write-Host "  (로그 파일: $env:TEMP\omc-install-*.log)" -ForegroundColor DarkGray
 }
 
 # Optional extras (fonts) - informational only, never a real failure
