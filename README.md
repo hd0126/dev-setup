@@ -72,15 +72,14 @@ curl -fsSL https://raw.githubusercontent.com/hd0126/dev-setup/main/install.sh | 
 
 **Linux (Ubuntu/Debian)** 에서 자동으로 처리합니다:
 - apt로 curl, git, ripgrep, fzf, python3, python3-pip, unzip 설치; gh는 GitHub 공식 apt 저장소를 추가해 설치 (시스템 기본 버전 유지)
-- nvm으로 Node.js LTS 설치
+- NodeSource 저장소로 Node.js LTS 설치 (npm 전역 prefix를 `~/.npm-global`로 설정 → sudo 없이 `npm install -g`)
 - curl로 Starship, zoxide 설치
 - npm으로 claude, codex, gemini-cli, omc, omx 설치
 - `.bashrc` / `.zshrc`에 `cc`, `ccc`, `ccr`, zoxide, fzf, starship 설정 추가
 
 **macOS** 에서 자동으로 처리합니다:
 - Homebrew 없으면 자동 설치
-- brew로 git, gh, ripgrep, fzf, zoxide, starship, python, nvm 설치
-- nvm으로 Node.js LTS 설치
+- brew로 git, gh, ripgrep, fzf, zoxide, starship, python, node 설치
 - npm으로 claude, codex, gemini-cli, omc, omx 설치
 - `.zshrc`에 `cc`, `ccc`, `ccr`, zoxide, fzf, starship 설정 추가
 - SSH는 macOS 키체인이 자동 관리 (별도 설정 불필요)
@@ -123,7 +122,7 @@ Remove-Item $env:TEMP\pwsh_tools_cache.ps1
 | **zoxide** | `z <키워드>`로 스마트 디렉토리 이동 |
 | **fzf** | `Ctrl+R` 히스토리 검색, `Ctrl+T` 파일 검색 |
 | **cc / ccc / ccr** | `cc`=`claude --dangerously-skip-permissions`, `ccc`=`cc --continue`, `ccr`=`cc --resume` (bypass permissions on) |
-| **nvm** | Node.js 버전 관리자 자동 로드 |
+| **npm 전역 경로** | `~/.npm-global/bin`을 PATH에 추가 (sudo 없이 설치한 전역 CLI 실행) |
 | **셸 로드 시간** | `[shell] loaded in Xms` — 터미널 시작 시 표시 |
 
 ```bash
@@ -144,8 +143,7 @@ rm ~/.cache/starship_init_zsh.zsh   # zsh
 | **zoxide** | `z <키워드>`로 스마트 디렉토리 이동 |
 | **fzf** | `Ctrl+R` 히스토리 검색, `Ctrl+T` 파일 검색 |
 | **cc / ccc / ccr** | `cc`=`claude --dangerously-skip-permissions`, `ccc`=`cc --continue`, `ccr`=`cc --resume` (bypass permissions on) |
-| **nvm (Homebrew)** | `$(brew --prefix nvm)/nvm.sh`에서 자동 로드 |
-| **Homebrew (Apple Silicon)** | `/opt/homebrew/bin/brew` 존재 시 `shellenv` 자동 적용 |
+| **Homebrew (Apple Silicon)** | `/opt/homebrew/bin/brew` 존재 시 `shellenv` 자동 적용 (node·npm 전역 CLI 포함) |
 | **셸 로드 시간** | `[shell] loaded in Xms` — 터미널 시작 시 표시 |
 | **SSH agent** | macOS 키체인이 자동 관리 — 별도 설정 불필요 |
 
@@ -205,9 +203,8 @@ if command -v starship &>/dev/null; then
     source "$_starship_cache"
 fi
 
-# ── nvm ───────────────────────────────────────────────────
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+# ── npm global bin (no-sudo prefix) ──────────────────────
+export PATH="$HOME/.npm-global/bin:$PATH"
 
 # ── Startup time ──────────────────────────────────────────
 if [ -n "$_shell_start" ]; then
@@ -254,9 +251,8 @@ if command -v starship &>/dev/null; then
     source "$_starship_cache"
 fi
 
-# ── nvm ───────────────────────────────────────────────────
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+# ── npm global bin (no-sudo prefix) ──────────────────────
+export PATH="$HOME/.npm-global/bin:$PATH"
 
 # ── Startup time ──────────────────────────────────────────
 if [ -n "$_shell_start" ]; then

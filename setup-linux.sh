@@ -42,20 +42,21 @@ else
     ok "GitHub CLI (already installed)"
 fi
 
-# ── 4. Node.js LTS (nvm) ──────────────────────────────────
+# ── 4. Node.js LTS (NodeSource) ───────────────────────────
 if ! command -v node &>/dev/null; then
-    info "Installing Node.js LTS via nvm..."
-    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-    export NVM_DIR="$HOME/.nvm"
-    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-    nvm install --lts && ok "Node.js LTS" || fail "Node.js LTS"
+    info "Installing Node.js LTS via NodeSource..."
+    curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+    sudo apt-get install -y -q nodejs && ok "Node.js LTS" || fail "Node.js LTS"
 else
     ok "Node.js (already installed: $(node --version))"
 fi
 
-# nvm 로드 (이미 설치된 경우 포함)
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+# npm 전역 패키지를 sudo 없이 설치하도록 prefix 설정 (~/.npm-global)
+if command -v npm &>/dev/null; then
+    mkdir -p "$HOME/.npm-global"
+    npm config set prefix "$HOME/.npm-global"
+    export PATH="$HOME/.npm-global/bin:$PATH"
+fi
 
 # ── 5. Starship ───────────────────────────────────────────
 if ! command -v starship &>/dev/null; then
@@ -140,9 +141,8 @@ if command -v starship &>/dev/null; then
     source "$_starship_cache"
 fi
 
-# ── nvm ───────────────────────────────────────────────────
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+# ── npm global bin (no-sudo prefix) ──────────────────────
+export PATH="$HOME/.npm-global/bin:$PATH"
 
 # ── Startup time ──────────────────────────────────────────
 if [ -n "$_shell_start" ]; then
@@ -182,9 +182,8 @@ if command -v starship &>/dev/null; then
     source "$_starship_cache"
 fi
 
-# ── nvm ───────────────────────────────────────────────────
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+# ── npm global bin (no-sudo prefix) ──────────────────────
+export PATH="$HOME/.npm-global/bin:$PATH"
 
 # ── Startup time ──────────────────────────────────────────
 if [ -n "$_shell_start" ]; then

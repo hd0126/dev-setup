@@ -42,22 +42,12 @@ install_brew zoxide
 install_brew starship
 install_brew python@3.12
 
-# ── 3. Node.js LTS (nvm) ──────────────────────────────────
+# ── 3. Node.js LTS (Homebrew) ─────────────────────────────
 if ! command -v node &>/dev/null; then
-    info "Installing Node.js LTS via nvm..."
-    brew install nvm
-    export NVM_DIR="$HOME/.nvm"
-    mkdir -p "$NVM_DIR"
-    [ -s "$(brew --prefix nvm)/nvm.sh" ] && \. "$(brew --prefix nvm)/nvm.sh"
-    nvm install --lts && ok "Node.js LTS" || fail "Node.js LTS"
+    install_brew node
 else
     ok "Node.js (already installed: $(node --version))"
 fi
-
-# nvm 로드
-export NVM_DIR="$HOME/.nvm"
-[ -s "$(brew --prefix nvm)/nvm.sh" ] && \. "$(brew --prefix nvm)/nvm.sh" 2>/dev/null || true
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" 2>/dev/null || true
 
 # ── 5. npm global packages ────────────────────────────────
 install_npm() {
@@ -125,10 +115,6 @@ if command -v starship &>/dev/null; then
     fi
     source "$_starship_cache"
 fi
-
-# ── nvm (Homebrew) ────────────────────────────────────────
-export NVM_DIR="$HOME/.nvm"
-[ -s "$(brew --prefix nvm)/nvm.sh" ] && \. "$(brew --prefix nvm)/nvm.sh"
 
 # ── Homebrew (Apple Silicon) ──────────────────────────────
 [ -f "/opt/homebrew/bin/brew" ] && eval "$(/opt/homebrew/bin/brew shellenv)"
