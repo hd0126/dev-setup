@@ -76,7 +76,6 @@ curl -fsSL https://raw.githubusercontent.com/hd0126/dev-setup/main/install.sh | 
 - curl로 Starship, zoxide 설치
 - npm으로 claude, codex, gemini-cli, omc, omx 설치
 - `.bashrc` / `.zshrc`에 `cc`, `ccc`, `ccr`, zoxide, fzf, starship 설정 추가
-- WSL 환경에서는 Windows PATH 충돌 방지 설정 자동 적용
 
 **macOS** 에서 자동으로 처리합니다:
 - Homebrew 없으면 자동 설치
@@ -126,9 +125,6 @@ Remove-Item $env:TEMP\pwsh_tools_cache.ps1
 | **cc / ccc / ccr** | `cc`=`claude --dangerously-skip-permissions`, `ccc`=`cc --continue`, `ccr`=`cc --resume` (bypass permissions on) |
 | **nvm** | Node.js 버전 관리자 자동 로드 |
 | **셸 로드 시간** | `[shell] loaded in Xms` — 터미널 시작 시 표시 |
-| **WSL PATH 보정** | WSL 환경에서 `~/.npm-global/bin`을 PATH 앞에 추가해 Windows 바이너리가 WSL 바이너리를 가리는 문제 방지 |
-
-> WSL PATH 보정은 `/proc/version`에 `microsoft`가 포함된 경우에만 적용됩니다. 네이티브 Linux에는 영향 없음.
 
 ```bash
 # Starship 캐시 초기화
@@ -181,11 +177,6 @@ Invoke-WebRequest -Uri $profileUrl -OutFile $PROFILE
 
 ```bash
 cat >> ~/.bashrc << 'EOF'
-# ── WSL: ensure WSL binaries take priority over Windows PATH ─────────────────
-if grep -qi microsoft /proc/version 2>/dev/null; then
-    export PATH="$HOME/.npm-global/bin:$PATH"
-fi
-
 # ── Shell startup timer ───────────────────────────────────
 _shell_start=$(date +%s%3N)
 
@@ -238,11 +229,6 @@ sed -i '1s/^/zmodload zsh\/datetime\n_shell_start=$EPOCHREALTIME\n/' ~/.zshrc
 
 # 2) 설정 블록을 .zshrc 끝에 추가
 cat >> ~/.zshrc << 'EOF'
-# ── WSL: ensure WSL binaries take priority over Windows PATH ─────────────────
-if grep -qi microsoft /proc/version 2>/dev/null; then
-    export PATH="$HOME/.npm-global/bin:$PATH"
-fi
-
 # ── Claude Code shortcuts ──────────────────────────────────
 alias cc='claude --dangerously-skip-permissions'
 alias ccc='cc --continue'
@@ -279,8 +265,6 @@ if [ -n "$_shell_start" ]; then
 fi
 EOF
 ```
-
-> macOS는 WSL PATH 보정 블록이 있어도 `/proc/version` 조건에 걸리지 않으므로 무시됩니다.
 
 적용 후 새 터미널을 열거나 `source ~/.bashrc` / `source ~/.zshrc` 를 실행하세요.
 

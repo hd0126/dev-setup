@@ -112,11 +112,6 @@ fi
 [ ${#SHELL_CONFIGS[@]} -eq 0 ] && SHELL_CONFIGS+=("$HOME/.bashrc") # fallback
 
 SNIPPET=$(cat <<'SHELLSNIPPET'
-# ── WSL: ensure WSL binaries take priority over Windows PATH ─────────────────
-if grep -qi microsoft /proc/version 2>/dev/null; then
-    export PATH="$HOME/.npm-global/bin:$PATH"
-fi
-
 # ── Shell startup timer ───────────────────────────────────
 _shell_start=$(date +%s%3N)
 
@@ -158,11 +153,6 @@ SHELLSNIPPET
 )
 
 ZSH_SNIPPET=$(cat <<'ZSHSNIPPET'
-# ── WSL: ensure WSL binaries take priority over Windows PATH ─────────────────
-if grep -qi microsoft /proc/version 2>/dev/null; then
-    export PATH="$HOME/.npm-global/bin:$PATH"
-fi
-
 # ── Shell startup timer ───────────────────────────────────
 zmodload zsh/datetime
 _shell_start=$EPOCHREALTIME
