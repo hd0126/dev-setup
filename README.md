@@ -10,7 +10,7 @@
 
 - [처음 설치 (신규)](#처음-설치-신규)
   - [🪟 Windows](#-windows)
-  - [🐧 Linux / 🍎 macOS](#-linux-ubuntudebian--macos)
+  - [🐧 Linux / 🍎 macOS](#-linux-ubuntudebian---macos)
 - [설치 후 자동 적용되는 설정](#설치-후-자동-적용되는-설정)
   - [🪟 Windows (PowerShell)](#-windows-powershell)
   - [🐧 Linux / WSL (bash/zsh)](#-linux--wsl-bashzsh)
@@ -38,7 +38,7 @@
 - [Claude Code 플러그인](#claude-code-플러그인-로그인-후-수동-실행)
 - [단축키 / 명령어](#단축키--명령어)
 - [프로필 캐시 관리](#프로필-캐시-관리)
-- [프로필 수정 후 Gist 업데이트](#프로필-수정-후-gist-업데이트)
+- [파일 수정 후 업데이트](#파일-수정-후-업데이트)
 
 ---
 
