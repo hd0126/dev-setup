@@ -1,0 +1,598 @@
+# Windows setup script (winget + npm)
+# Run as Administrator (Windows PowerShell or pwsh):
+#   powershell -ExecutionPolicy Bypass -File install.ps1
+#   pwsh      -ExecutionPolicy Bypass -File install.ps1
+#
+# One-liner (safe even on a fresh PC with default Restricted policy):
+#   irm https://raw.githubusercontent.com/hd0126/dev-setup/main/install.ps1 | iex
+
+# ── Allow scripts in THIS process so npm.ps1 and the profile can load ──
+# Default Windows policy is Restricted, which blocks npm (npm is npm.ps1).
+# Process scope: no admin needed, nothing is changed system-wide.
+try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction Stop } catch {}
+
+# Ensure TLS 1.2 for HTTPS downloads. Modern Win10/11 use SystemDefault (which
+# already negotiates TLS 1.2), but older Windows PowerShell 5.1 hosts default to
+# TLS 1.0 and would fail to reach GitHub/npm. -bor only adds, never removes.
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
+
+$packages = @(
+    @{
+        Id   = "OpenJS.NodeJS.LTS"
+        Name = "Node.js LTS"
+        Desc = "JS runtime. Required for codex, gemini-cli, omc, omx."
+        Ex   = "node --version / npm install -g <pkg>"
+        On   = $true
+    },
+    @{
+        Id   = "Git.Git"
+        Name = "Git"
+        Desc = "Version control. Required for GitHub CLI and Claude Code."
+        Ex   = "git clone / git commit / git push"
+        On   = $true
+    },
+    @{
+        Id       = "Anthropic.ClaudeCode"
+        Name     = "Claude Code"
+        Desc     = "Anthropic AI coding CLI."
+        Ex       = "cc / ccc (continue) / ccr (resume)"
+        On       = $true
+        Requires = @("Node.js LTS", "Git")
+    },
+    @{
+        Id       = "GitHub.cli"
+        Name     = "GitHub CLI"
+        Desc     = "Manage GitHub PRs, issues, gists from terminal."
+        Ex       = "gh pr create / gh gist list"
+        On       = $true
+        Requires = @("Git")
+    },
+    @{
+        Id   = "Microsoft.PowerShell"
+        Name = "PowerShell 7"
+        Desc = "pwsh 7. This profile requires pwsh 7."
+        Ex   = "pwsh"
+        On   = $true
+    },
+    @{
+        Id   = "Starship.Starship"
+        Name = "Starship"
+        Desc = "Fast customizable prompt. Shows Git branch and status."
+        Ex   = "git branch -> shown in prompt"
+        On   = $true
+    },
+    @{
+        Id       = "DEVCOM.JetBrainsMonoNerdFont"
+        Name     = "JetBrainsMono Nerd Font"
+        Desc     = "Nerd Font for Starship icons. Prevents broken glyphs in the prompt."
+        Ex       = "Set terminal font to 'JetBrainsMono Nerd Font' after install"
+        On       = $true
+        Optional = $true
+    },
+    @{
+        Id   = "ajeetdsouza.zoxide"
+        Name = "zoxide"
+        Desc = "Smart cd based on history. No need to type full path."
+        Ex   = "z proj  ->  C:\Users\me\Documents\projects"
+        On   = $true
+    },
+    @{
+        Id   = "junegunn.fzf"
+        Name = "fzf"
+        Desc = "Fuzzy finder UI. Ctrl+R history, Ctrl+T file search."
+        Ex   = "Ctrl+R -> history / Ctrl+T -> file search"
+        On   = $true
+    },
+    @{
+        Id   = "BurntSushi.ripgrep.MSVC"
+        Name = "ripgrep"
+        Desc = "Faster grep. Auto applies .gitignore."
+        Ex   = "rg 'function' src/"
+        On   = $true
+    },
+    @{
+        Id   = "Python.Python.3.12"
+        Name = "Python 3.12"
+        Desc = "General purpose language. Data, automation, AI."
+        Ex   = "python --version / pip install <pkg>"
+        On   = $true
+    }
+)
+
+$npmPackages = @(
+    @{
+        Name      = "codex (OpenAI)"
+        Desc      = "OpenAI Codex CLI. Native installer - no Node dependency, self-updating (OpenAI-recommended). Installed first so omx has its engine."
+        Ex        = "codex 'write tests'"
+        On        = $true
+        Native    = $true
+        Installer = "https://chatgpt.com/codex/install.ps1"
+    },
+    @{
+        Name = "@google/gemini-cli"
+        Desc = "Google Gemini CLI."
+        Ex   = "gemini 'explain this code'"
+        On   = $true
+    },
+    @{
+        Name = "oh-my-codex"
+        Desc = "Multi-agent orchestration for Codex (omx)."
+        Ex   = "omx"
+        On   = $true
+    }
+    # Note: omc (oh-my-claudecode) is installed as a Claude Code PLUGIN below,
+    # not via npm. The npm package pulls native modules (better-sqlite3) that
+    # need a C++ toolchain on Windows; the plugin needs none and is the same version.
+)
+
+# ── Interactive menu (native PowerShell checkbox UI) ──────
+function Show-Menu {
+    param($items, $title, [bool]$canGoBack = $false)
+
+    $cursor = 0
+    $Host.UI.RawUI.CursorSize = 0
+
+    while ($true) {
+        Clear-Host
+        $selectedCount = ($items | Where-Object { $_.On }).Count
+
+        Write-Host "=== $title  ($selectedCount / $($items.Count) selected) ===" -ForegroundColor Yellow
+        $nav = if ($canGoBack) { "  |  Left/Backspace: back" } else { "" }
+        Write-Host "  Up/Down: move  |  Space: toggle  |  A: select all  |  Enter: confirm$nav  |  Esc: cancel" -ForegroundColor DarkGray
+        Write-Host ""
+
+        for ($i = 0; $i -lt $items.Count; $i++) {
+            $mark  = if ($items[$i].On) { "[v]" } else { "[ ]" }
+            $arrow = if ($i -eq $cursor) { ">" } else { " " }
+            $color = if ($items[$i].On) { "Cyan" } else { "DarkGray" }
+            Write-Host "  $arrow $mark $($items[$i].Name)  " -NoNewline -ForegroundColor $color
+            Write-Host "$($items[$i].Desc)" -ForegroundColor DarkGray
+        }
+
+        Write-Host ""
+        Write-Host "  ex) $($items[$cursor].Ex)" -ForegroundColor DarkGray
+
+        $key = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+
+        switch ($key.VirtualKeyCode) {
+            38 { if ($cursor -gt 0) { $cursor-- } }
+            40 { if ($cursor -lt $items.Count - 1) { $cursor++ } }
+            32 {
+                $items[$cursor].On = -not $items[$cursor].On
+                if ($items[$cursor].On -and $items[$cursor].Requires) {
+                    foreach ($req in $items[$cursor].Requires) {
+                        $dep = $items | Where-Object { $_.Name -eq $req }
+                        if ($dep) { $dep.On = $true }
+                    }
+                }
+            }
+            65 {
+                $allOn = ($items | Where-Object { -not $_.On }).Count -eq 0
+                foreach ($item in $items) { $item.On = -not $allOn }
+            }
+            13 { $Host.UI.RawUI.CursorSize = 25; return $items }
+            37 { if ($canGoBack) { $Host.UI.RawUI.CursorSize = 25; return "__BACK__" } }   # Left arrow -> previous page
+            8  { if ($canGoBack) { $Host.UI.RawUI.CursorSize = 25; return "__BACK__" } }   # Backspace  -> previous page
+            27 { $Host.UI.RawUI.CursorSize = 25; Write-Host "Cancelled." -ForegroundColor Red; exit 0 }
+        }
+    }
+}
+
+Clear-Host
+# Two-step selection wizard. Left/Backspace on the npm page returns to the
+# winget page; selections on each page are preserved (objects are mutated in
+# place) so moving back and forth never loses what was already toggled.
+$step = 0
+while ($step -lt 2) {
+    if ($step -eq 0) {
+        $packages = Show-Menu -items $packages -title "Packages to install"
+        $step++
+    } else {
+        $res = Show-Menu -items $npmPackages -title "AI CLI tools" -canGoBack $true
+        if ($res -is [string] -and $res -eq "__BACK__") {
+            $step--          # go back to the winget page
+        } else {
+            $npmPackages = $res
+            $step++
+        }
+    }
+}
+
+# ── Auto-add Node.js if a Node-based CLI is selected (codex is native) ─────────────
+$needsNode = $npmPackages | Where-Object { $_.On -and -not $_.Native }
+if ($needsNode) {
+    $nodePkg = $packages | Where-Object { $_.Name -eq "Node.js LTS" }
+    if ($nodePkg -and -not $nodePkg.On) {
+        $nodePkg.On = $true
+        Write-Host "Node.js LTS auto-added (required for npm packages)" -ForegroundColor Yellow
+    }
+}
+
+# ── Summary ───────────────────────────────────────────────
+Write-Host ""
+Write-Host "Items to install:" -ForegroundColor Green
+$packages    | Where-Object { $_.On } | ForEach-Object { Write-Host "  [winget] $($_.Name)" -ForegroundColor Cyan }
+$npmPackages | Where-Object { $_.On } | ForEach-Object { Write-Host "  [npm]    $($_.Name)" -ForegroundColor Cyan }
+Write-Host ""
+Write-Host "Starting installation..." -ForegroundColor Green
+
+# ── Check winget ──────────────────────────────────────────
+if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+    Write-Host "winget not found. Install 'App Installer' from Microsoft Store." -ForegroundColor Red
+    exit 1
+}
+
+# ── Install winget packages ───────────────────────────────
+$wingetList  = @($packages | Where-Object { $_.On })
+$wingetTotal  = $wingetList.Count
+$wingetIdx    = 0
+$failedPkgs   = @()
+$optionalFails = @()
+
+foreach ($pkg in $wingetList) {
+    $wingetIdx++
+    Write-Host "[$wingetIdx/$wingetTotal] $($pkg.Name)..." -ForegroundColor Cyan -NoNewline
+
+    # Check if already installed, and from which source
+    $listOut = winget list --id $pkg.Id --exact --accept-source-agreements 2>&1 | Out-String
+    $alreadyInstalled = ($LASTEXITCODE -eq 0)
+    $isStoreManaged   = $alreadyInstalled -and ($listOut -match 'msstore|Microsoft Store')
+
+    if ($isStoreManaged) {
+        Write-Host " [SKIP] Microsoft Store version detected - uninstall it first to use winget version" -ForegroundColor Yellow
+        $failedPkgs += "$($pkg.Name) (Store conflict)"
+        continue
+    }
+
+    if ($alreadyInstalled) {
+        winget upgrade $pkg.Id --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null
+    } else {
+        winget install $pkg.Id --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null
+    }
+    $exit = $LASTEXITCODE
+
+    # Retry a failed fresh install with user scope. Machine-scope installs can
+    # fail with access-denied (exit 5) or crash the installer with an access
+    # violation (0xC0000005 / -1073741819) on locked-down PCs or when antivirus
+    # blocks the elevated installer; user scope needs no elevation.
+    if (-not $alreadyInstalled -and $exit -ne 0 -and $exit -ne -1978335189) {
+        Write-Host " retry (user scope)..." -ForegroundColor DarkGray -NoNewline
+        winget install $pkg.Id --scope user --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null
+        $exit = $LASTEXITCODE
+    }
+    if ($exit -eq 0) {
+        if ($alreadyInstalled) { Write-Host " [UPGRADED]"  -ForegroundColor Green }
+        else                   { Write-Host " [INSTALLED]" -ForegroundColor Green }
+    } elseif ($exit -eq -1978335189) {
+        Write-Host " [OK - already latest]" -ForegroundColor Green   # 0x8A15002B (no update needed)
+    } else {
+        $reason = switch ($exit) {
+            1603        { "installer conflict (exit 1603)" }
+            -1073741819 { "installer crashed (0xC0000005 access violation - often antivirus or a broken VC++ runtime)" }
+            5           { "access denied (exit 5 - try running this script once as Administrator)" }
+            default     { "exit $exit" }
+        }
+        if ($pkg.Optional) {
+            # Optional extras (e.g. fonts) must never fail the whole run.
+            Write-Host " [SKIP] optional - $reason" -ForegroundColor Yellow
+            $optionalFails += "$($pkg.Name) ($reason)"
+        } else {
+            Write-Host " [FAILED] $reason" -ForegroundColor Red
+            $failedPkgs += "$($pkg.Name) ($reason)"
+        }
+    }
+}
+
+# Refresh PATH
+$env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
+            [System.Environment]::GetEnvironmentVariable("Path", "User") + ";" +
+            "$env:APPDATA\npm"
+
+# ── zoxide fallback: standalone binary if winget failed ───
+# winget can crash (0xC0000005) or be denied (exit 5) on locked-down PCs and
+# never recover. zoxide ships as a single static binary, so when it is still
+# missing after winget, drop the prebuilt exe on PATH directly.
+$zoxidePkg = $packages | Where-Object { $_.Id -eq 'ajeetdsouza.zoxide' }
+if ($zoxidePkg -and $zoxidePkg.On -and -not (Get-Command zoxide -ErrorAction SilentlyContinue)) {
+    Write-Host "zoxide missing after winget - installing standalone binary..." -ForegroundColor Yellow
+    try {
+        $arch  = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'aarch64' } else { 'x86_64' }
+        $rel   = Invoke-RestMethod 'https://api.github.com/repos/ajeetdsouza/zoxide/releases/latest' -Headers @{ 'User-Agent' = 'omc-install' }
+        $asset = $rel.assets | Where-Object { $_.name -like "*$arch-pc-windows-msvc*.zip" } | Select-Object -First 1
+        if (-not $asset) { throw "no Windows binary for arch '$arch'" }
+        $zip = Join-Path $env:TEMP 'zoxide.zip'
+        $dir = Join-Path $env:TEMP 'zoxide-bin'
+        if (Test-Path $dir) { Remove-Item $dir -Recurse -Force }
+        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip -UseBasicParsing
+        Expand-Archive -Path $zip -DestinationPath $dir -Force
+        $exe = Get-ChildItem -Path $dir -Recurse -Filter 'zoxide.exe' | Select-Object -First 1
+        if (-not $exe) { throw "zoxide.exe not found in archive" }
+        $binDir = Join-Path $env:LOCALAPPDATA 'Programs\zoxide'
+        New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+        Copy-Item $exe.FullName (Join-Path $binDir 'zoxide.exe') -Force
+        # Persist on the user PATH (no admin needed) and add to the current session.
+        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+        if ($userPath -notlike "*$binDir*") {
+            [Environment]::SetEnvironmentVariable('Path', "$userPath;$binDir", 'User')
+        }
+        $env:Path += ";$binDir"
+        $failedPkgs = @($failedPkgs | Where-Object { $_ -notlike 'zoxide*' })
+        Write-Host "  zoxide $($rel.tag_name) installed to $binDir and added to PATH." -ForegroundColor Green
+    } catch {
+        Write-Host "  zoxide fallback failed: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "  Install manually from https://github.com/ajeetdsouza/zoxide/releases" -ForegroundColor DarkGray
+    }
+}
+
+# ── Install npm packages ──────────────────────────────────
+$selectedNpm = $npmPackages | Where-Object { $_.On }
+if ($selectedNpm) {
+    # npm is only needed for non-native CLIs (codex uses a native installer).
+    $npmCmd = $null
+    if ($selectedNpm | Where-Object { -not $_.Native }) {
+        # Use npm.cmd explicitly: PowerShell would otherwise resolve "npm" to
+        # npm.ps1, which is blocked by execution policy on locked-down (GPO) PCs.
+        # .cmd is not subject to execution policy at all.
+        $npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
+        if (-not $npmCmd) {
+            Write-Host ""
+            Write-Host "npm not found. Restart PowerShell and run this script again." -ForegroundColor Red
+            exit 1
+        }
+    }
+    $npmTotal = @($selectedNpm).Count
+    $npmIdx   = 0
+    $npmNativeFail = $false
+    Write-Host "Installing AI CLI tools..." -ForegroundColor Cyan
+    foreach ($pkg in $selectedNpm) {
+        $npmIdx++
+        Write-Host "[$npmIdx/$npmTotal] $($pkg.Name)..." -ForegroundColor DarkGray -NoNewline
+
+        # Native installer (e.g. Codex): standalone binary, no Node dependency.
+        # Codex is first in the list, so omx (which drives codex) has its engine.
+        if ($pkg.Native) {
+            Write-Host ""
+            try {
+                irm $pkg.Installer | iex
+                Write-Host "  -> $($pkg.Name) [OK - native installer]" -ForegroundColor Green
+            } catch {
+                Write-Host "  -> $($pkg.Name) [FAILED] native installer: $($_.Exception.Message)" -ForegroundColor Red
+                $failedPkgs += "$($pkg.Name) (native installer)"
+            }
+            continue
+        }
+
+        # Fast local check (no network): is it installed, and at what version?
+        $installedVer = $null
+        $lsJson = & $npmCmd.Source ls -g $pkg.Name --depth=0 --json 2>$null | Out-String
+        if ($lsJson) { try { $installedVer = ($lsJson | ConvertFrom-Json).dependencies.($pkg.Name).version } catch {} }
+
+        # If installed, one quick metadata call decides upgrade vs already-latest.
+        # Skipping the reinstall when current is the big time saver - npm install -g
+        # otherwise re-resolves and rebuilds native modules on every run.
+        $latestVer = $null
+        if ($installedVer) {
+            $latestVer = (& $npmCmd.Source view $pkg.Name version 2>$null | Out-String).Trim()
+            if ($latestVer -and ($latestVer -eq $installedVer)) {
+                Write-Host " [OK - already latest ($installedVer)]" -ForegroundColor Green
+                continue
+            }
+        }
+
+        $npmLog = & $npmCmd.Source install -g $pkg.Name 2>&1 | Out-String
+        if ($LASTEXITCODE -ne 0) {
+            # Retry once: covers transient network drops and prebuilt-binary
+            # downloads that occasionally fail on the first attempt.
+            Write-Host " retry..." -ForegroundColor DarkGray -NoNewline
+            $npmLog = & $npmCmd.Source install -g $pkg.Name 2>&1 | Out-String
+        }
+        if ($LASTEXITCODE -eq 0) {
+            if ($installedVer) { Write-Host " [UPGRADED $installedVer -> $latestVer]" -ForegroundColor Green }
+            else               { Write-Host " [INSTALLED]" -ForegroundColor Green }
+        } else {
+            Write-Host " [FAILED] exit $LASTEXITCODE" -ForegroundColor Red
+            $failedPkgs += "$($pkg.Name) (npm exit $LASTEXITCODE)"
+
+            # Save the full log and surface the key error lines so the real
+            # root cause (build tools vs blocked download) is visible.
+            $safeName = ($pkg.Name -replace '[^\w.-]', '_')
+            $logFile  = Join-Path $env:TEMP "omc-install-$safeName.log"
+            $npmLog | Out-File -FilePath $logFile -Encoding utf8
+            $keyLines = $npmLog -split "`r?`n" |
+                Where-Object { $_ -match 'npm ERR!|gyp ERR!|prebuild|ETIMEDOUT|ECONNRESET|ENOTFOUND|EACCES|403|proxy|MSBuild|Visual Studio|node-gyp|fatal error|cannot find|self.signed' } |
+                Select-Object -Last 12
+            if ($keyLines) {
+                Write-Host "    --- error detail ---" -ForegroundColor DarkGray
+                foreach ($l in $keyLines) { Write-Host "    $($l.Trim())" -ForegroundColor DarkGray }
+            }
+            Write-Host "    full log saved to: $logFile" -ForegroundColor DarkGray
+
+            # Detect native-module build failures (better-sqlite3, node-gyp, etc.)
+            if ($npmLog -match 'node-gyp|gyp ERR|MSBuild|prebuild|better.sqlite3|Visual Studio|node_gyp|C\+\+') {
+                $npmNativeFail = $true
+            }
+            # Detect network/proxy failures (corporate firewall blocking downloads)
+            if ($npmLog -match 'ETIMEDOUT|ECONNRESET|ENOTFOUND|ECONNREFUSED|403 Forbidden|self.signed certificate|tunneling socket') {
+                $npmNetworkFail = $true
+            }
+        }
+    }
+}
+
+# Allow profile to run
+# Run in a child process to avoid the -ExecutionPolicy Bypass override from the parent shell
+if (Get-Command pwsh -ErrorAction SilentlyContinue) {
+    pwsh -Command "Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force" 2>$null
+} else {
+    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force -ErrorAction SilentlyContinue
+}
+
+# Download PowerShell profile from Gist
+Write-Host "Downloading PowerShell profile..." -ForegroundColor Cyan
+$gistUrl = "https://raw.githubusercontent.com/hd0126/dev-setup/main/Microsoft.PowerShell_profile.ps1"
+$pwshProfilePath = Join-Path ([Environment]::GetFolderPath("MyDocuments")) "PowerShell\Microsoft.PowerShell_profile.ps1"
+$profileDir = Split-Path $pwshProfilePath
+New-Item -Path $profileDir -ItemType Directory -Force | Out-Null
+if (Test-Path $pwshProfilePath) {
+    $bakPath = "$pwshProfilePath.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+    Copy-Item $pwshProfilePath $bakPath
+    Write-Host "  Existing profile backed up: $bakPath" -ForegroundColor DarkGray
+}
+Invoke-WebRequest -Uri $gistUrl -OutFile $pwshProfilePath -UseBasicParsing
+
+# ── Nerd Font: guarantee install + apply to terminals ─────
+$fontPkg = $packages | Where-Object { $_.Id -eq 'DEVCOM.JetBrainsMonoNerdFont' }
+if ($fontPkg -and $fontPkg.On) {
+    Write-Host ""
+    Write-Host "Configuring Nerd Font..." -ForegroundColor Cyan
+    $face     = "JetBrainsMono Nerd Font"
+    $faceMono = "JetBrainsMono Nerd Font Mono"
+    $userFontReg = "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts"
+
+    # 1) Make sure the font is really installed (winget may have skipped/failed).
+    $fontPresent = $false
+    foreach ($rp in @($userFontReg, "HKLM:\Software\Microsoft\Windows NT\CurrentVersion\Fonts")) {
+        if (Test-Path $rp) {
+            if ((Get-ItemProperty $rp).PSObject.Properties.Name -like 'JetBrainsMono*') { $fontPresent = $true; break }
+        }
+    }
+    if ($fontPresent) {
+        Write-Host "  Font already installed." -ForegroundColor DarkGray
+    } else {
+        try {
+            Write-Host "  Font missing - installing from nerd-fonts releases (no admin needed)..." -ForegroundColor DarkGray
+            $zip    = Join-Path $env:TEMP "JetBrainsMonoNF.zip"
+            $tmpDir = Join-Path $env:TEMP "JetBrainsMonoNF"
+            if (Test-Path $tmpDir) { Remove-Item $tmpDir -Recurse -Force }
+            Invoke-WebRequest -Uri "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip" -OutFile $zip -UseBasicParsing
+            Expand-Archive -Path $zip -DestinationPath $tmpDir -Force
+            $fontDst = Join-Path $env:LOCALAPPDATA "Microsoft\Windows\Fonts"
+            New-Item -ItemType Directory -Force -Path $fontDst | Out-Null
+            if (-not (Test-Path $userFontReg)) { New-Item -Path $userFontReg -Force | Out-Null }
+            $ttfs = @(Get-ChildItem -Path $tmpDir -Recurse -Filter *.ttf)
+            $copied = 0; $inUse = 0
+            foreach ($f in $ttfs) {
+                $dst = Join-Path $fontDst $f.Name
+                try {
+                    Copy-Item $f.FullName $dst -Force -ErrorAction Stop
+                    Set-ItemProperty -Path $userFontReg -Name "$($f.BaseName) (TrueType)" -Value $dst
+                    $copied++
+                } catch {
+                    # File already present and locked by the font cache / a running
+                    # terminal. It is already installed, so skipping is harmless.
+                    $inUse++
+                }
+            }
+            Write-Host "  Installed $copied font file(s) for the current user ($inUse already in use, skipped)." -ForegroundColor DarkGray
+        } catch {
+            Write-Host "  Could not auto-install the font: $($_.Exception.Message)" -ForegroundColor DarkGray
+            Write-Host "  Get it manually from https://www.nerdfonts.com" -ForegroundColor DarkGray
+        }
+    }
+
+    # 2) Apply to Windows Terminal (all known settings.json locations).
+    $wtPaths = @(
+        "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json",
+        "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\settings.json",
+        "$env:LOCALAPPDATA\Microsoft\Windows Terminal\settings.json"
+    )
+    $wtSeen = @{}
+    $wtDone = 0
+    foreach ($p in $wtPaths) {
+        if (-not (Test-Path $p)) { continue }
+        # Skip paths that resolve to a file already handled (symlink/duplicate).
+        $full = (Get-Item $p).FullName
+        if ($wtSeen[$full]) { continue }
+        $wtSeen[$full] = $true
+        try {
+            $cfg = Get-Content $p -Raw | ConvertFrom-Json -ErrorAction Stop
+            if (-not $cfg.profiles) { continue }
+            Copy-Item $p "$p.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')" -Force
+            if (-not $cfg.profiles.defaults) {
+                $cfg.profiles | Add-Member -NotePropertyName defaults -NotePropertyValue ([pscustomobject]@{}) -Force
+            }
+            if (-not $cfg.profiles.defaults.font) {
+                $cfg.profiles.defaults | Add-Member -NotePropertyName font -NotePropertyValue ([pscustomobject]@{}) -Force
+            }
+            $cfg.profiles.defaults.font | Add-Member -NotePropertyName face -NotePropertyValue $face -Force
+            $cfg | ConvertTo-Json -Depth 32 | Set-Content $p -Encoding utf8
+            $wtDone++
+        } catch {
+            Write-Host "  Could not auto-edit $p (set the font manually)." -ForegroundColor DarkGray
+        }
+    }
+    if ($wtDone -gt 0) {
+        Write-Host "  Windows Terminal font set to '$face' in $wtDone settings file(s)." -ForegroundColor DarkGray
+    }
+
+    # 3) Apply to the legacy console (conhost) default - covers the plain
+    #    'Windows PowerShell' window. Uses the monospaced NF variant.
+    try {
+        if (-not (Test-Path "HKCU:\Console")) { New-Item -Path "HKCU:\Console" -Force | Out-Null }
+        New-ItemProperty -Path "HKCU:\Console" -Name "FaceName"   -Value $faceMono -PropertyType String -Force | Out-Null
+        New-ItemProperty -Path "HKCU:\Console" -Name "FontFamily" -Value 54        -PropertyType DWord  -Force | Out-Null
+        New-ItemProperty -Path "HKCU:\Console" -Name "FontWeight" -Value 400       -PropertyType DWord  -Force | Out-Null
+        Write-Host "  Legacy console default font set to '$faceMono'." -ForegroundColor DarkGray
+    } catch {
+        Write-Host "  Could not set legacy console font automatically." -ForegroundColor DarkGray
+    }
+    Write-Host "  Restart your terminal to see the new font." -ForegroundColor DarkGray
+}
+
+# ── Claude Code plugins (manual, after login) ─────────────
+Write-Host ""
+Write-Host "-- Claude Code plugins (run after login) --" -ForegroundColor Yellow
+Write-Host "  claude login"
+Write-Host "  claude plugin marketplace add Yeachan-Heo/oh-my-claudecode"
+Write-Host "  claude plugin install oh-my-claudecode@omc"
+Write-Host "  claude plugin marketplace add openai/codex-plugin-cc"
+Write-Host "  claude plugin install codex@openai-codex"
+Write-Host "  claude plugin marketplace add https://github.com/orientpine/honeypot.git"
+Write-Host "  claude plugin marketplace add forrestchang/andrej-karpathy-skills"
+Write-Host "  claude plugin install andrej-karpathy-skills@karpathy-skills"
+Write-Host "-------------------------------------------" -ForegroundColor Yellow
+
+# ── Summary ───────────────────────────────────────────────
+Write-Host ""
+if ($failedPkgs.Count -eq 0) {
+    Write-Host "All required packages installed successfully." -ForegroundColor Green
+} else {
+    Write-Host "Done with $($failedPkgs.Count) issue(s):" -ForegroundColor Yellow
+    foreach ($f in $failedPkgs) {
+        Write-Host "  [FAILED] $f" -ForegroundColor Red
+    }
+    Write-Host ""
+    Write-Host "Tip: For 'Store conflict' errors, uninstall the Microsoft Store version first," -ForegroundColor DarkGray
+    Write-Host "     then re-run this script and select only the failed packages." -ForegroundColor DarkGray
+}
+
+# Optional extras (fonts) - informational only, never a real failure
+if ($optionalFails.Count -gt 0) {
+    Write-Host ""
+    Write-Host "Optional items skipped (not required - safe to ignore):" -ForegroundColor DarkGray
+    foreach ($o in $optionalFails) { Write-Host "  [skip] $o" -ForegroundColor DarkGray }
+    Write-Host "  A Nerd Font can be installed manually from https://www.nerdfonts.com" -ForegroundColor DarkGray
+}
+
+# Native-module build failures (e.g. oh-my-claude-sisyphus -> better-sqlite3)
+if ($npmNativeFail) {
+    Write-Host ""
+    Write-Host "An npm package failed to build a native module (e.g. better-sqlite3)." -ForegroundColor Yellow
+    Write-Host "This needs the C++ build tools. Fix it with:" -ForegroundColor DarkGray
+    Write-Host '  winget install Microsoft.VisualStudio.2022.BuildTools --silent --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"' -ForegroundColor DarkGray
+    Write-Host "  # then open a NEW terminal and re-run the failed npm install, e.g.:" -ForegroundColor DarkGray
+    Write-Host "  npm install -g oh-my-claude-sisyphus" -ForegroundColor DarkGray
+    Write-Host "If you are behind a corporate proxy/firewall, prebuilt binaries may be blocked;" -ForegroundColor DarkGray
+    Write-Host "configure npm proxy (npm config set proxy ...) or try another network." -ForegroundColor DarkGray
+}
+Write-Host ""
+Write-Host "=============================================" -ForegroundColor Cyan
+Write-Host "  NEXT STEP: Open a NEW pwsh (PowerShell 7)" -ForegroundColor Cyan
+Write-Host "  window NOW to apply PATH and profile."      -ForegroundColor Cyan
+Write-Host "  claude / codex will NOT work until you do." -ForegroundColor Yellow
+Write-Host "=============================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Nerd Font was installed and set as the terminal font automatically." -ForegroundColor DarkGray
+Write-Host "If icons still look broken after restarting, set the font by hand:" -ForegroundColor DarkGray
+Write-Host "  Windows Terminal : Settings > Defaults > Appearance > Font face > 'JetBrainsMono Nerd Font'" -ForegroundColor DarkGray
+Write-Host "  Legacy console   : title bar > Properties > Font > 'JetBrainsMono Nerd Font Mono'" -ForegroundColor DarkGray
