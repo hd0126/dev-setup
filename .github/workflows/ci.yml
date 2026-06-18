@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  powershell:
+    name: PowerShell (parse + PSScriptAnalyzer)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax parse (.ps1)
+        shell: pwsh
+        run: |
+          $bad = 0
+          Get-ChildItem -Filter *.ps1 | ForEach-Object {
+            $errs = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errs)
+            if ($errs) { Write-Host "::error file=$($_.Name)::$($errs[0].Message)"; $bad++ }
+            else { Write-Host "OK  $($_.Name)" }
+          }
+          exit $bad
+      - name: PSScriptAnalyzer (errors only)
+        shell: pwsh
+        run: |
+          Set-PSRepository PSGallery -InstallationPolicy Trusted
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          $r = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error
+          if ($r) {
+            $r | Format-Table -AutoSize | Out-String | Write-Host
+            Write-Host "::error::PSScriptAnalyzer found $($r.Count) error(s)"
+            exit 1
+          }
+          Write-Host "PSScriptAnalyzer: no errors"
+
+  shell:
+    name: Shell (bash -n + shellcheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash -n (syntax)
+        run: |
+          for f in *.sh; do echo "== $f =="; bash -n "$f"; done
+      - name: shellcheck (errors only)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          for f in *.sh; do echo "== $f =="; shellcheck -S error "$f"; done
