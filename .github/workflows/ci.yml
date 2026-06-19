@@ -34,6 +34,19 @@ jobs:
             exit 1
           }
           Write-Host "PSScriptAnalyzer: no errors"
+      - name: install.ps1 dry-run (non-interactive smoke test)
+        shell: pwsh
+        env:
+          DEVSETUP_DRYRUN: "1"
+        run: |
+          # Runs the installer end-to-end with no prompts and no real installs.
+          # Child process so the script's `exit 0` doesn't end this step early.
+          $out  = pwsh -NoProfile -File ./install.ps1 *>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Host $out
+          if ($code -ne 0) { Write-Host "::error::install.ps1 dry-run exited $code"; exit 1 }
+          if ($out -notmatch 'DRY-RUN') { Write-Host "::error::install.ps1 dry-run did not produce a plan"; exit 1 }
+          Write-Host "install.ps1 dry-run smoke OK"
 
   shell:
     name: Shell (bash -n + shellcheck)

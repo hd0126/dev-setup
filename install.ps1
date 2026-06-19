@@ -16,6 +16,14 @@ try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAc
 # TLS 1.0 and would fail to reach GitHub/npm. -bor only adds, never removes.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
 
+# ── Non-interactive / dry-run (unattended installs and CI) ──────────────────
+# Set these env vars BEFORE running (works with the irm | iex one-liner too):
+#   $env:DEVSETUP_NONINTERACTIVE=1  -> skip the selection menu, install the defaults
+#   $env:DEVSETUP_DRYRUN=1          -> print the install plan but change nothing
+# GitHub Actions sets CI=true, which is treated as non-interactive automatically.
+$DryRun         = -not [string]::IsNullOrEmpty($env:DEVSETUP_DRYRUN)
+$NonInteractive = $DryRun -or (-not [string]::IsNullOrEmpty($env:DEVSETUP_NONINTERACTIVE)) -or ($env:CI -eq 'true')
+
 $packages = @(
     @{
         Id   = "OpenJS.NodeJS.LTS"
@@ -185,22 +193,27 @@ function Show-Menu {
     }
 }
 
-Clear-Host
 # Two-step selection wizard. Left/Backspace on the npm page returns to the
 # winget page; selections on each page are preserved (objects are mutated in
 # place) so moving back and forth never loses what was already toggled.
-$step = 0
-while ($step -lt 2) {
-    if ($step -eq 0) {
-        $packages = Show-Menu -items $packages -title "Packages to install"
-        $step++
-    } else {
-        $res = Show-Menu -items $npmPackages -title "AI CLI tools" -canGoBack $true
-        if ($res -is [string] -and $res -eq "__BACK__") {
-            $step--          # go back to the winget page
-        } else {
-            $npmPackages = $res
+if ($NonInteractive) {
+    $mode = if ($DryRun) { "DRY-RUN" } else { "non-interactive" }
+    Write-Host "[$mode] skipping menu - using the default selection (all items On)." -ForegroundColor Yellow
+} else {
+    Clear-Host
+    $step = 0
+    while ($step -lt 2) {
+        if ($step -eq 0) {
+            $packages = Show-Menu -items $packages -title "Packages to install"
             $step++
+        } else {
+            $res = Show-Menu -items $npmPackages -title "AI CLI tools" -canGoBack $true
+            if ($res -is [string] -and $res -eq "__BACK__") {
+                $step--          # go back to the winget page
+            } else {
+                $npmPackages = $res
+                $step++
+            }
         }
     }
 }
@@ -224,7 +237,7 @@ Write-Host ""
 Write-Host "Starting installation..." -ForegroundColor Green
 
 # ── Check winget ──────────────────────────────────────────
-if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+if (-not $DryRun -and -not (Get-Command winget -ErrorAction SilentlyContinue)) {
     Write-Host "winget not found. Install 'App Installer' from Microsoft Store." -ForegroundColor Red
     exit 1
 }
@@ -239,6 +252,7 @@ $optionalFails = @()
 foreach ($pkg in $wingetList) {
     $wingetIdx++
     Write-Host "[$wingetIdx/$wingetTotal] $($pkg.Name)..." -ForegroundColor Cyan -NoNewline
+    if ($DryRun) { Write-Host " [DRY-RUN] would install/upgrade ($($pkg.Id))" -ForegroundColor DarkGray; continue }
 
     # Check if already installed, and from which source
     $listOut = winget list --id $pkg.Id --exact --accept-source-agreements 2>&1 | Out-String
@@ -300,7 +314,7 @@ $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";
 # never recover. zoxide ships as a single static binary, so when it is still
 # missing after winget, drop the prebuilt exe on PATH directly.
 $zoxidePkg = $packages | Where-Object { $_.Id -eq 'ajeetdsouza.zoxide' }
-if ($zoxidePkg -and $zoxidePkg.On -and -not (Get-Command zoxide -ErrorAction SilentlyContinue)) {
+if ($zoxidePkg -and $zoxidePkg.On -and -not $DryRun -and -not (Get-Command zoxide -ErrorAction SilentlyContinue)) {
     Write-Host "zoxide missing after winget - installing standalone binary..." -ForegroundColor Yellow
     try {
         $arch  = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'aarch64' } else { 'x86_64' }
@@ -336,7 +350,7 @@ $selectedNpm = $npmPackages | Where-Object { $_.On }
 if ($selectedNpm) {
     # npm is only needed for non-native CLIs (codex uses a native installer).
     $npmCmd = $null
-    if ($selectedNpm | Where-Object { -not $_.Native }) {
+    if (-not $DryRun -and ($selectedNpm | Where-Object { -not $_.Native })) {
         # Use npm.cmd explicitly: PowerShell would otherwise resolve "npm" to
         # npm.ps1, which is blocked by execution policy on locked-down (GPO) PCs.
         # .cmd is not subject to execution policy at all.
@@ -354,6 +368,11 @@ if ($selectedNpm) {
     foreach ($pkg in $selectedNpm) {
         $npmIdx++
         Write-Host "[$npmIdx/$npmTotal] $($pkg.Name)..." -ForegroundColor DarkGray -NoNewline
+        if ($DryRun) {
+            $how = if ($pkg.Native) { "native installer" } else { "npm -g" }
+            Write-Host " [DRY-RUN] would install ($how)" -ForegroundColor DarkGray
+            continue
+        }
 
         # Native installer (e.g. Codex): standalone binary, no Node dependency.
         # Codex is first in the list, so omx (which drives codex) has its engine.
@@ -428,28 +447,34 @@ if ($selectedNpm) {
 
 # Allow profile to run
 # Run in a child process to avoid the -ExecutionPolicy Bypass override from the parent shell
-if (Get-Command pwsh -ErrorAction SilentlyContinue) {
-    pwsh -Command "Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force" 2>$null
-} else {
-    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force -ErrorAction SilentlyContinue
+if (-not $DryRun) {
+    if (Get-Command pwsh -ErrorAction SilentlyContinue) {
+        pwsh -Command "Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force" 2>$null
+    } else {
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force -ErrorAction SilentlyContinue
+    }
 }
 
-# Download PowerShell profile from Gist
-Write-Host "Downloading PowerShell profile..." -ForegroundColor Cyan
-$gistUrl = "https://raw.githubusercontent.com/hd0126/dev-setup/main/Microsoft.PowerShell_profile.ps1"
-$pwshProfilePath = Join-Path ([Environment]::GetFolderPath("MyDocuments")) "PowerShell\Microsoft.PowerShell_profile.ps1"
-$profileDir = Split-Path $pwshProfilePath
-New-Item -Path $profileDir -ItemType Directory -Force | Out-Null
-if (Test-Path $pwshProfilePath) {
-    $bakPath = "$pwshProfilePath.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
-    Copy-Item $pwshProfilePath $bakPath
-    Write-Host "  Existing profile backed up: $bakPath" -ForegroundColor DarkGray
+# Download PowerShell profile from the repo
+if (-not $DryRun) {
+    Write-Host "Downloading PowerShell profile..." -ForegroundColor Cyan
+    $gistUrl = "https://raw.githubusercontent.com/hd0126/dev-setup/main/Microsoft.PowerShell_profile.ps1"
+    $pwshProfilePath = Join-Path ([Environment]::GetFolderPath("MyDocuments")) "PowerShell\Microsoft.PowerShell_profile.ps1"
+    $profileDir = Split-Path $pwshProfilePath
+    New-Item -Path $profileDir -ItemType Directory -Force | Out-Null
+    if (Test-Path $pwshProfilePath) {
+        $bakPath = "$pwshProfilePath.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+        Copy-Item $pwshProfilePath $bakPath
+        Write-Host "  Existing profile backed up: $bakPath" -ForegroundColor DarkGray
+    }
+    Invoke-WebRequest -Uri $gistUrl -OutFile $pwshProfilePath -UseBasicParsing
+} else {
+    Write-Host "[DRY-RUN] would download the PowerShell profile to `$PROFILE." -ForegroundColor DarkGray
 }
-Invoke-WebRequest -Uri $gistUrl -OutFile $pwshProfilePath -UseBasicParsing
 
 # ── Nerd Font: guarantee install + apply to terminals ─────
 $fontPkg = $packages | Where-Object { $_.Id -eq 'DEVCOM.JetBrainsMonoNerdFont' }
-if ($fontPkg -and $fontPkg.On) {
+if ($fontPkg -and $fontPkg.On -and -not $DryRun) {
     Write-Host ""
     Write-Host "Configuring Nerd Font..." -ForegroundColor Cyan
     $face     = "JetBrainsMono Nerd Font"
@@ -561,7 +586,9 @@ Write-Host "-------------------------------------------" -ForegroundColor Yellow
 
 # ── Summary ───────────────────────────────────────────────
 Write-Host ""
-if ($failedPkgs.Count -eq 0) {
+if ($DryRun) {
+    Write-Host "[DRY-RUN] Plan validated - nothing was installed." -ForegroundColor Green
+} elseif ($failedPkgs.Count -eq 0) {
     Write-Host "All required packages installed successfully." -ForegroundColor Green
 } else {
     Write-Host "Done with $($failedPkgs.Count) issue(s):" -ForegroundColor Yellow
@@ -576,6 +603,9 @@ if ($failedPkgs.Count -eq 0) {
     Write-Host "  https://github.com/hd0126/dev-setup/issues/new/choose" -ForegroundColor Cyan
     Write-Host "  (로그 파일: $env:TEMP\omc-install-*.log)" -ForegroundColor DarkGray
 }
+
+# Dry-run ends here: the plan was printed, the post-install steps below don't apply.
+if ($DryRun) { Write-Host ""; exit 0 }
 
 # Optional extras (fonts) - informational only, never a real failure
 if ($optionalFails.Count -gt 0) {
