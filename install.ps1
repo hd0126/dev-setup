@@ -96,6 +96,13 @@ $packages = @(
         Desc = "General purpose language. Data, automation, AI."
         Ex   = "python --version / pip install <pkg>"
         On   = $true
+    },
+    @{
+        Id   = "astral-sh.uv"
+        Name = "uv"
+        Desc = "Fast Python package and project manager (pip/venv replacement)."
+        Ex   = "uv venv / uv pip install <pkg>"
+        On   = $true
     }
 )
 

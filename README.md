@@ -29,6 +29,7 @@
   - [🤖 Claude Code](#-claude-code)
   - [🟩 Node.js LTS](#-nodejs-lts)
   - [🐍 Python 3.12](#-python-312)
+  - [⚡ uv](#-uv)
   - [🐙 Git](#-git)
   - [🐱 GitHub CLI](#-github-cli)
   - [🔵 Codex CLI](#-codex-cli)
@@ -53,7 +54,7 @@ irm https://raw.githubusercontent.com/hd0126/dev-setup/main/install.ps1 | iex
 ```
 
 자동으로 처리합니다:
-- PowerShell 7, Starship, zoxide, fzf, ripgrep, Claude Code, Node.js, Git, GitHub CLI, Python 3.12 설치 (선택 가능)
+- PowerShell 7, Starship, zoxide, fzf, ripgrep, Claude Code, Node.js, Git, GitHub CLI, Python 3.12, uv 설치 (선택 가능)
 - JetBrainsMono Nerd Font 설치 + Windows Terminal 폰트 자동 설정 (선택 가능)
 - codex (OpenAI 네이티브 인스톨러, Node 불필요), @google/gemini-cli, oh-my-codex(omx) 설치 (선택 가능)
 - PowerShell 프로필 다운로드 및 적용 (기존 프로필은 타임스탬프 백업)
@@ -73,13 +74,13 @@ curl -fsSL https://raw.githubusercontent.com/hd0126/dev-setup/main/install.sh | 
 **Linux (Ubuntu/Debian)** 에서 자동으로 처리합니다:
 - apt로 curl, git, ripgrep, fzf, python3, python3-pip, unzip 설치; gh는 GitHub 공식 apt 저장소를 추가해 설치 (시스템 기본 버전 유지)
 - NodeSource 저장소로 Node.js LTS 설치 (npm 전역 prefix를 `~/.npm-global`로 설정 → sudo 없이 `npm install -g`)
-- curl로 Starship, zoxide 설치
+- curl로 Starship, zoxide, uv 설치
 - npm으로 claude, codex, gemini-cli, omc, omx 설치
 - `.bashrc` / `.zshrc`에 `cc`, `ccc`, `ccr`, zoxide, fzf, starship 설정 추가
 
 **macOS** 에서 자동으로 처리합니다:
 - Homebrew 없으면 자동 설치
-- brew로 git, gh, ripgrep, fzf, zoxide, starship, python, node 설치
+- brew로 git, gh, ripgrep, fzf, zoxide, starship, python, uv, node 설치
 - npm으로 claude, codex, gemini-cli, omc, omx 설치
 - `.zshrc`에 `cc`, `ccc`, `ccr`, zoxide, fzf, starship 설정 추가
 - SSH는 macOS 키체인이 자동 관리 (별도 설정 불필요)
@@ -404,6 +405,17 @@ npm install -g <패키지>
 ```powershell
 python --version
 pip install <패키지>
+```
+
+---
+
+### ⚡ uv
+빠른 Python 패키지·venv 관리자 (Rust 단일 바이너리). pip·venv를 대체하며 수십 배 빠릅니다.
+
+```powershell
+uv venv                # 가상환경 생성
+uv pip install <패키지>  # 패키지 설치
+uv run <스크립트>        # 환경 자동 구성 후 실행
 ```
 
 ---

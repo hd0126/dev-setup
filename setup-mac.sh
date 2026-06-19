@@ -41,6 +41,7 @@ install_brew fzf
 install_brew zoxide
 install_brew starship
 install_brew python@3.12
+install_brew uv
 
 # ── 3. Node.js LTS (Homebrew) ─────────────────────────────
 if ! command -v node &>/dev/null; then

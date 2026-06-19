@@ -74,6 +74,15 @@ else
     ok "zoxide (already installed)"
 fi
 
+# ── 6b. uv (Python package manager) ───────────────────────
+if ! command -v uv &>/dev/null; then
+    info "Installing uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh && ok "uv" || fail "uv"
+    export PATH="$HOME/.local/bin:$PATH"
+else
+    ok "uv (already installed)"
+fi
+
 # ── 7. npm global packages ────────────────────────────────
 install_npm() {
     local pkg="$1"
@@ -144,6 +153,9 @@ fi
 # ── npm global bin (no-sudo prefix) ──────────────────────
 export PATH="$HOME/.npm-global/bin:$PATH"
 
+# ── uv (~/.local/bin) ─────────────────────────────────────
+export PATH="$HOME/.local/bin:$PATH"
+
 # ── Startup time ──────────────────────────────────────────
 if [ -n "$_shell_start" ]; then
     printf '\033[0;36m[shell] loaded in %dms\033[0m\n' "$(( $(date +%s%3N) - _shell_start ))"
@@ -184,6 +196,9 @@ fi
 
 # ── npm global bin (no-sudo prefix) ──────────────────────
 export PATH="$HOME/.npm-global/bin:$PATH"
+
+# ── uv (~/.local/bin) ─────────────────────────────────────
+export PATH="$HOME/.local/bin:$PATH"
 
 # ── Startup time ──────────────────────────────────────────
 if [ -n "$_shell_start" ]; then
