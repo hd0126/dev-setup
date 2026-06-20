@@ -61,6 +61,15 @@ irm https://raw.githubusercontent.com/hd0126/dev-setup/main/install.ps1 | iex
 
 > npm을 찾을 수 없으면 안내 메시지 출력 후 중단 — 재시작 후 재실행하면 됩니다.
 
+**무인 설치 (프롬프트 없이):** 선택 메뉴를 건너뛰고 기본 구성을 그대로 설치합니다. 자동화·여러 PC 재설치에 유용합니다. 환경변수를 먼저 설정한 뒤 같은 줄을 실행하세요:
+
+```powershell
+$env:DEVSETUP_NONINTERACTIVE = 1
+irm https://raw.githubusercontent.com/hd0126/dev-setup/main/install.ps1 | iex
+```
+
+> 미리 보기: `$env:DEVSETUP_DRYRUN = 1` 로 실행하면 **실제 설치 없이** "설치 계획"만 출력합니다 (점검·CI용).
+
 ---
 
 ### 🐧 Linux (Ubuntu/Debian) / 🍎 macOS
