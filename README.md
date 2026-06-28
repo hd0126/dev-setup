@@ -470,6 +470,8 @@ OpenAI의 AI 코딩 CLI. 터미널에서 자연어로 코드 작성·수정·실
 irm https://chatgpt.com/codex/install.ps1 | iex
 ```
 
+> ⚠️ 설치 중 `tar: Cannot connect to C:` 오류가 나면, PATH 앞쪽에 **Git의 유닉스 `tar`(`...\Git\usr\bin`)** 가 끼어 Windows 경로를 원격 호스트로 오해한 것입니다. `where.exe tar` 로 확인하고, `C:\Windows\System32\tar.exe` 가 먼저 잡히는 일반 PowerShell 창에서 위 명령을 다시 실행하세요.
+
 ```bash
 codex                         # 대화형 모드 실행
 codex 'tests 작성해줘'        # 한 줄 명령으로 실행

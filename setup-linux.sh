@@ -106,8 +106,12 @@ install_npm() {
 # Both installers drop binaries in ~/.local/bin, already on PATH (see uv above).
 install_native() {
     local name="$1" url="$2" sh="${3:-bash}"
+    local tmp; tmp="$(mktemp)"
     info "Installing $name (native installer)..."
-    if curl -fsSL "$url" | "$sh"; then ok "$name"; else fail "$name"; fi
+    # Download first, THEN run: piping `curl | sh` hides a failed download
+    # (sh exits 0 on empty stdin), so a 404/network error would falsely report OK.
+    if curl -fsSL "$url" -o "$tmp" && "$sh" "$tmp"; then ok "$name"; else fail "$name"; fi
+    rm -f "$tmp"
 }
 
 install_native "Claude Code"    "https://claude.ai/install.sh"         bash

@@ -72,8 +72,12 @@ install_npm() {
 # natively, independent of npm; gemini-cli / omc / omx stay on npm.
 install_native() {
     local name="$1" url="$2" sh="${3:-bash}"
+    local tmp; tmp="$(mktemp)"
     info "Installing $name (native installer)..."
-    if curl -fsSL "$url" | "$sh"; then ok "$name"; else fail "$name"; fi
+    # Download first, THEN run: piping `curl | sh` hides a failed download
+    # (sh exits 0 on empty stdin), so a 404/network error would falsely report OK.
+    if curl -fsSL "$url" -o "$tmp" && "$sh" "$tmp"; then ok "$name"; else fail "$name"; fi
+    rm -f "$tmp"
 }
 
 install_native "Claude Code"    "https://claude.ai/install.sh"         bash
@@ -128,7 +132,9 @@ if command -v starship &>/dev/null; then
 fi
 
 # ── Local bin (native installers: claude, codex) ─────────
-export PATH="$HOME/.local/bin:$PATH"
+# Idempotent: the native installers may already add this line, so only prepend
+# when it isn't on PATH yet — avoids a duplicate ~/.local/bin entry.
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
 
 # ── Homebrew (Apple Silicon) ──────────────────────────────
 [ -f "/opt/homebrew/bin/brew" ] && eval "$(/opt/homebrew/bin/brew shellenv)"

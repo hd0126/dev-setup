@@ -678,6 +678,17 @@ if ($npmNativeFail) {
     Write-Host "If you are behind a corporate proxy/firewall, prebuilt binaries may be blocked;" -ForegroundColor DarkGray
     Write-Host "configure npm proxy (npm config set proxy ...) or try another network." -ForegroundColor DarkGray
 }
+
+# Network/proxy failures (corporate firewall blocking npm downloads)
+if ($npmNetworkFail) {
+    Write-Host ""
+    Write-Host "An npm package failed to download (network/proxy/firewall)." -ForegroundColor Yellow
+    Write-Host "If you are behind a corporate proxy, point npm at it and retry:" -ForegroundColor DarkGray
+    Write-Host "  npm config set proxy http://<proxy-host>:<port>" -ForegroundColor DarkGray
+    Write-Host "  npm config set https-proxy http://<proxy-host>:<port>" -ForegroundColor DarkGray
+    Write-Host "Otherwise check your connection or try another network, then open a NEW" -ForegroundColor DarkGray
+    Write-Host "terminal and re-run this script (already-installed items are skipped)." -ForegroundColor DarkGray
+}
 Write-Host ""
 Write-Host "=============================================" -ForegroundColor Cyan
 Write-Host "  NEXT STEP: Open a NEW pwsh (PowerShell 7)" -ForegroundColor Cyan
