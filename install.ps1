@@ -40,14 +40,6 @@ $packages = @(
         On   = $true
     },
     @{
-        Id       = "Anthropic.ClaudeCode"
-        Name     = "Claude Code"
-        Desc     = "Anthropic AI coding CLI."
-        Ex       = "cc / ccc (continue) / ccr (resume)"
-        On       = $true
-        Requires = @("Node.js LTS", "Git")
-    },
-    @{
         Id       = "GitHub.cli"
         Name     = "GitHub CLI"
         Desc     = "Manage GitHub PRs, issues, gists from terminal."
@@ -116,8 +108,16 @@ $packages = @(
 
 $npmPackages = @(
     @{
+        Name      = "Claude Code"
+        Desc      = "Anthropic AI coding CLI. Native installer (Anthropic-recommended) - auto-updates in the background."
+        Ex        = "cc / ccc (continue) / ccr (resume)"
+        On        = $true
+        Native    = $true
+        Installer = "https://claude.ai/install.ps1"
+    },
+    @{
         Name      = "codex (OpenAI)"
-        Desc      = "OpenAI Codex CLI. Native installer - no Node dependency, self-updating (OpenAI-recommended). Installed first so omx has its engine."
+        Desc      = "OpenAI Codex CLI. Native installer - no Node dependency, self-updating (OpenAI-recommended). Installed before omx so omx has its engine."
         Ex        = "codex 'write tests'"
         On        = $true
         Native    = $true
@@ -218,8 +218,11 @@ if ($NonInteractive) {
     }
 }
 
-# ── Auto-add Node.js if a Node-based CLI is selected (codex is native) ─────────────
-$needsNode = $npmPackages | Where-Object { $_.On -and -not $_.Native }
+# ── Auto-add Node.js if a Node-based CLI is selected (native installers don't need it) ──
+# Use ContainsKey before reading .Native: packages without that key would throw a
+# "property not found" error under Set-StrictMode, which a native installer (or a
+# user profile) can switch on. This guard keeps the lookup safe in any session.
+$needsNode = $npmPackages | Where-Object { $_.On -and -not ($_.ContainsKey('Native') -and $_.Native) }
 if ($needsNode) {
     $nodePkg = $packages | Where-Object { $_.Name -eq "Node.js LTS" }
     if ($nodePkg -and -not $nodePkg.On) {
@@ -232,7 +235,10 @@ if ($needsNode) {
 Write-Host ""
 Write-Host "Items to install:" -ForegroundColor Green
 $packages    | Where-Object { $_.On } | ForEach-Object { Write-Host "  [winget] $($_.Name)" -ForegroundColor Cyan }
-$npmPackages | Where-Object { $_.On } | ForEach-Object { Write-Host "  [npm]    $($_.Name)" -ForegroundColor Cyan }
+$npmPackages | Where-Object { $_.On } | ForEach-Object {
+    $tag = if ($_.ContainsKey('Native') -and $_.Native) { "[native]" } else { "[npm]   " }
+    Write-Host "  $tag $($_.Name)" -ForegroundColor Cyan
+}
 Write-Host ""
 Write-Host "Starting installation..." -ForegroundColor Green
 
@@ -348,9 +354,9 @@ if ($zoxidePkg -and $zoxidePkg.On -and -not $DryRun -and -not (Get-Command zoxid
 # ── Install npm packages ──────────────────────────────────
 $selectedNpm = $npmPackages | Where-Object { $_.On }
 if ($selectedNpm) {
-    # npm is only needed for non-native CLIs (codex uses a native installer).
+    # npm is only needed for non-native CLIs (codex and Claude Code use native installers).
     $npmCmd = $null
-    if (-not $DryRun -and ($selectedNpm | Where-Object { -not $_.Native })) {
+    if (-not $DryRun -and ($selectedNpm | Where-Object { -not ($_.ContainsKey('Native') -and $_.Native) })) {
         # Use npm.cmd explicitly: PowerShell would otherwise resolve "npm" to
         # npm.ps1, which is blocked by execution policy on locked-down (GPO) PCs.
         # .cmd is not subject to execution policy at all.
@@ -368,22 +374,43 @@ if ($selectedNpm) {
     foreach ($pkg in $selectedNpm) {
         $npmIdx++
         Write-Host "[$npmIdx/$npmTotal] $($pkg.Name)..." -ForegroundColor DarkGray -NoNewline
+        $isNative = $pkg.ContainsKey('Native') -and $pkg.Native
         if ($DryRun) {
-            $how = if ($pkg.Native) { "native installer" } else { "npm -g" }
+            $how = if ($isNative) { "native installer" } else { "npm -g" }
             Write-Host " [DRY-RUN] would install ($how)" -ForegroundColor DarkGray
             continue
         }
 
-        # Native installer (e.g. Codex): standalone binary, no Node dependency.
-        # Codex is first in the list, so omx (which drives codex) has its engine.
-        if ($pkg.Native) {
+        # Native installer (Claude Code, Codex): standalone binary, no Node dependency.
+        #
+        # Run it in an ISOLATED child process (powershell.exe -NoProfile) instead of
+        # `irm | iex` in this scope. That isolation fixes two real failures:
+        #   1. Strict-mode leak (downstream): these installers call
+        #      `Set-StrictMode -Version Latest`. With `irm | iex` that leaks into this
+        #      script, so the next package's `$pkg.Native` lookup (on a hashtable that
+        #      has no such key) throws "property not found" and aborts the whole run.
+        #   2. Profile pollution (upstream): -NoProfile gives the installer a clean
+        #      session, so a strict-mode (or otherwise quirky) user profile can't break
+        #      the installer's own arch detection (e.g. RuntimeInformation::OSArchitecture).
+        # The child runs with -ExecutionPolicy Bypass so the saved .ps1 runs under the
+        # default Restricted policy too.
+        if ($isNative) {
             Write-Host ""
+            $tmp = Join-Path $env:TEMP "devsetup-native-$npmIdx.ps1"
             try {
-                irm $pkg.Installer | iex
-                Write-Host "  -> $($pkg.Name) [OK - native installer]" -ForegroundColor Green
+                Invoke-RestMethod $pkg.Installer -OutFile $tmp
+                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $tmp
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "  -> $($pkg.Name) [OK - native installer]" -ForegroundColor Green
+                } else {
+                    Write-Host "  -> $($pkg.Name) [FAILED] native installer (exit $LASTEXITCODE)" -ForegroundColor Red
+                    $failedPkgs += "$($pkg.Name) (native installer)"
+                }
             } catch {
                 Write-Host "  -> $($pkg.Name) [FAILED] native installer: $($_.Exception.Message)" -ForegroundColor Red
                 $failedPkgs += "$($pkg.Name) (native installer)"
+            } finally {
+                Remove-Item $tmp -Force -ErrorAction SilentlyContinue
             }
             continue
         }
