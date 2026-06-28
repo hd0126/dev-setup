@@ -131,7 +131,7 @@ $npmPackages = @(
     },
     @{
         Name = "oh-my-codex"
-        Desc = "Multi-agent orchestration for Codex (omx)."
+        Desc = "Multi-agent orchestration for Codex (omx). Tuned for macOS/Linux; native Windows is less supported (WSL2 recommended)."
         Ex   = "omx"
         On   = $true
     }
@@ -470,6 +470,18 @@ if ($selectedNpm) {
             }
         }
     }
+}
+
+# ── oh-my-codex (omx) Windows caveat ──────────────────────
+# Per its README, omx is primarily tuned for macOS/Linux; native Windows is a
+# best-effort path that may behave inconsistently. Surface that so Windows users
+# (this installer is Windows-only) know WSL2 is the more reliable path for omx.
+$omxSelected = $npmPackages | Where-Object { $_.On -and $_.Name -eq 'oh-my-codex' }
+if ($omxSelected) {
+    Write-Host ""
+    Write-Host "Note: oh-my-codex (omx) is primarily tuned for macOS/Linux." -ForegroundColor Yellow
+    Write-Host "  On native Windows it may behave inconsistently (per its README)." -ForegroundColor DarkGray
+    Write-Host "  For the most reliable experience, run omx inside WSL2." -ForegroundColor DarkGray
 }
 
 # Allow profile to run
