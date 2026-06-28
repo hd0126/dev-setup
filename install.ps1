@@ -651,9 +651,47 @@ if ($DryRun) {
     Write-Host "Tip: For 'Store conflict' errors, uninstall the Microsoft Store version first," -ForegroundColor DarkGray
     Write-Host "     then re-run this script and select only the failed packages." -ForegroundColor DarkGray
     Write-Host ""
-    Write-Host "해결이 안 되면 이슈를 열어주세요 (OS / 위 [FAILED] 줄 / 로그 첨부 — 초보 환영):" -ForegroundColor Cyan
-    Write-Host "  https://github.com/hd0126/dev-setup/issues/new/choose" -ForegroundColor Cyan
+
+    # ── Report a problem (terminal-friendly) ──────────────────
+    # 1) Pre-filled GitHub issue URL: opens the browser with the OS, the failed
+    #    items and the log path already filled in, so the user only presses Submit.
+    # 2) gh (already installed by this script): if present and interactive, offer
+    #    to file the issue straight from the terminal.
+    $reportTitle = "[install] $($failedPkgs.Count) issue(s) on Windows"
+    $reportBody = @"
+## 환경 (Environment)
+- OS: Windows $([Environment]::OSVersion.Version)
+- PowerShell: $($PSVersionTable.PSVersion)
+
+## 실패 항목 (Failed items)
+$(( $failedPkgs | ForEach-Object { "- $_" } ) -join "`n")
+
+## 로그 (Logs)
+- $env:TEMP\omc-install-*.log
+
+## 추가 상황 (Notes)
+<!-- 무엇을 하다 생긴 문제인지 적어주세요 -->
+"@
+    $issueUrl = "https://github.com/hd0126/dev-setup/issues/new?title=$([uri]::EscapeDataString($reportTitle))&body=$([uri]::EscapeDataString($reportBody))"
+
+    Write-Host "문제를 알려주세요 (초보 환영):" -ForegroundColor Cyan
+    Write-Host "  아래 링크를 열면 OS·에러·로그 경로가 자동으로 채워집니다 (Submit만 누르면 끝):" -ForegroundColor DarkGray
+    Write-Host "  $issueUrl" -ForegroundColor Cyan
     Write-Host "  (로그 파일: $env:TEMP\omc-install-*.log)" -ForegroundColor DarkGray
+
+    $gh = Get-Command gh -ErrorAction SilentlyContinue
+    if ($gh -and -not $NonInteractive) {
+        Write-Host ""
+        $ans = Read-Host "  gh가 설치돼 있습니다. 지금 바로 이슈를 생성할까요? (gh 로그인 필요) [y/N]"
+        if ($ans -match '^(y|yes)$') {
+            $tmpBody = Join-Path $env:TEMP "devsetup-issue-body.md"
+            $reportBody | Out-File -FilePath $tmpBody -Encoding utf8
+            & $gh.Source issue create --repo hd0126/dev-setup --title $reportTitle --body-file $tmpBody
+            if ($LASTEXITCODE -eq 0) { Write-Host "  이슈가 생성되었습니다. 감사합니다!" -ForegroundColor Green }
+            else { Write-Host "  gh 제출 실패 — 위 링크로 열어주세요 ('gh auth login' 후 재시도 가능)." -ForegroundColor DarkGray }
+            Remove-Item $tmpBody -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 # Dry-run ends here: the plan was printed, the post-install steps below don't apply.

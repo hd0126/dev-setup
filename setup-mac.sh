@@ -9,7 +9,8 @@ GREEN='\033[0;32m'; CYAN='\033[0;36m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC
 ok()   { echo -e "${GREEN}[OK]${NC} $1"; }
 info() { echo -e "${CYAN}[..] $1${NC}"; }
 warn() { echo -e "${YELLOW}[!!] $1${NC}"; }
-fail() { echo -e "${RED}[FAIL]${NC} $1"; }
+FAILED=()
+fail() { echo -e "${RED}[FAIL]${NC} $1"; FAILED+=("$1"); }
 
 # ── 1. Homebrew ───────────────────────────────────────────
 if ! command -v brew &>/dev/null; then
@@ -151,6 +152,46 @@ fi
 # ── 7. SSH agent ──────────────────────────────────────────
 # macOS는 launchd + 키체인이 자동 관리 → 별도 설정 불필요
 ok "SSH agent — macOS keychain handles this automatically"
+
+# ── Report a problem (terminal-friendly) ─────────────────
+# 1) Pre-filled GitHub issue URL (OS + failed items already filled in).
+# 2) gh (installed above): if present, offer to file the issue from the terminal.
+if [ ${#FAILED[@]} -gt 0 ]; then
+    echo ""
+    warn "${#FAILED[@]} item(s) failed:"
+    for f in "${FAILED[@]}"; do echo -e "  ${RED}[FAILED]${NC} $f"; done
+
+    TITLE="[install] ${#FAILED[@]} issue(s) on macOS"
+    BODY="## 환경 (Environment)
+- OS: macOS $(sw_vers -productVersion 2>/dev/null) ($(uname -m))
+- Shell: $SHELL
+
+## 실패 항목 (Failed items)
+$(printf -- '- %s\n' "${FAILED[@]}")
+## 추가 상황 (Notes)
+<!-- 무엇을 하다 생긴 문제인지 적어주세요 -->"
+
+    if command -v python3 &>/dev/null; then
+        enc() { python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.stdin.buffer.read().decode("utf-8")),end="")'; }
+        URL="https://github.com/hd0126/dev-setup/issues/new?title=$(printf '%s' "$TITLE" | enc)&body=$(printf '%s' "$BODY" | enc)"
+    else
+        URL="https://github.com/hd0126/dev-setup/issues/new"
+    fi
+    echo ""
+    echo -e "${CYAN}문제를 알려주세요 (초보 환영):${NC}"
+    echo "  아래 링크를 열면 내용이 자동으로 채워집니다 (Submit만 누르면 끝):"
+    echo "  $URL"
+
+    if command -v gh &>/dev/null; then
+        printf "  gh로 지금 이슈를 생성할까요? (gh 로그인 필요) [y/N] "
+        read -r ans </dev/tty 2>/dev/null || ans=""
+        case "$ans" in
+            y|Y|yes) printf '%s' "$BODY" | gh issue create --repo hd0126/dev-setup --title "$TITLE" --body-file - \
+                       && ok "이슈가 생성되었습니다. 감사합니다!" \
+                       || warn "gh 제출 실패 — 위 링크로 열어주세요 ('gh auth login' 후 재시도 가능)." ;;
+        esac
+    fi
+fi
 
 # ── Done ──────────────────────────────────────────────────
 ELAPSED=$((SECONDS - START_TIME))
