@@ -100,14 +100,25 @@ install_npm() {
     fi
 }
 
+# Claude Code and codex ship official native installers (standalone binaries
+# with background auto-update) — the vendor-recommended path. Install those
+# natively, independent of npm; gemini-cli / omc / omx stay on npm.
+# Both installers drop binaries in ~/.local/bin, already on PATH (see uv above).
+install_native() {
+    local name="$1" url="$2" sh="${3:-bash}"
+    info "Installing $name (native installer)..."
+    if curl -fsSL "$url" | "$sh"; then ok "$name"; else fail "$name"; fi
+}
+
+install_native "Claude Code"    "https://claude.ai/install.sh"         bash
+install_native "codex (OpenAI)" "https://chatgpt.com/codex/install.sh" sh
+
 if command -v npm &>/dev/null; then
-    install_npm "@anthropic-ai/claude-code"
-    install_npm "@openai/codex"
     install_npm "@google/gemini-cli"
     install_npm "oh-my-claude-sisyphus"
     install_npm "oh-my-codex"
 else
-    warn "npm not found — skipping AI CLI tools. Install Node.js first, then re-run."
+    warn "npm not found — skipping gemini-cli/omc/omx. Install Node.js first, then re-run."
 fi
 
 # ── 8. Shell config (.bashrc / .zshrc) ───────────────────
