@@ -402,6 +402,19 @@ if ($selectedNpm) {
                 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $tmp
                 if ($LASTEXITCODE -eq 0) {
                     Write-Host "  -> $($pkg.Name) [OK - native installer]" -ForegroundColor Green
+                    # Claude Code's Windows native installer drops claude.exe in
+                    # %USERPROFILE%\.local\bin but, unlike codex, does NOT add that
+                    # folder to PATH. Persist it (and add to this session) so the
+                    # `claude` command resolves after install / in a new terminal.
+                    if ($pkg.Name -eq 'Claude Code') {
+                        $localBin = Join-Path $env:USERPROFILE '.local\bin'
+                        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+                        if ($userPath -notlike "*$localBin*") {
+                            [Environment]::SetEnvironmentVariable('Path', ($userPath.TrimEnd(';') + ';' + $localBin), 'User')
+                            Write-Host "     added $localBin to your PATH" -ForegroundColor DarkGray
+                        }
+                        if ($env:Path -notlike "*$localBin*") { $env:Path += ";$localBin" }
+                    }
                 } else {
                     Write-Host "  -> $($pkg.Name) [FAILED] native installer (exit $LASTEXITCODE)" -ForegroundColor Red
                     $failedPkgs += "$($pkg.Name) (native installer)"
