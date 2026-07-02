@@ -72,7 +72,16 @@ install_npm() {
 # with background auto-update) — the vendor-recommended path. Install those
 # natively, independent of npm; gemini-cli / omc / omx stay on npm.
 install_native() {
-    local name="$1" url="$2" sh="${3:-bash}"
+    local name="$1" url="$2" sh="${3:-bash}" cmd="$4"
+    # Native builds self-update in the background, so an existing install is
+    # enough — skip the re-download (it is big, and painful on flaky networks).
+    # Check the native launcher path specifically, NOT `command -v`: on a
+    # machine that still has the npm version, command -v would find that and
+    # skip the migration to native.
+    if [ -n "$cmd" ] && [ -x "$HOME/.local/bin/$cmd" ]; then
+        ok "$name (already installed: $("$HOME/.local/bin/$cmd" --version 2>/dev/null | head -1))"
+        return 0
+    fi
     local tmp; tmp="$(mktemp)"
     info "Installing $name (native installer)..."
     # Download first, THEN run: piping `curl | sh` hides a failed download
@@ -81,8 +90,8 @@ install_native() {
     rm -f "$tmp"
 }
 
-install_native "Claude Code"    "https://claude.ai/install.sh"         bash
-install_native "codex (OpenAI)" "https://chatgpt.com/codex/install.sh" sh
+install_native "Claude Code"    "https://claude.ai/install.sh"         bash claude
+install_native "codex (OpenAI)" "https://chatgpt.com/codex/install.sh" sh   codex
 
 if command -v npm &>/dev/null; then
     install_npm "@google/gemini-cli"
