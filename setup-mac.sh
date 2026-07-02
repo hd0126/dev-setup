@@ -80,10 +80,15 @@ install_npm() {
     # grep -E only: macOS BSD grep has no -P (PCRE), which made this always
     # come back empty and reinstall every package on every run
     installed=$(npm list -g --depth=0 2>/dev/null | grep -F "$pkg@" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+[^ ]*' | head -1)
-    latest=$(npm view "$pkg" version 2>/dev/null)
+    # `|| latest=""` 가드 필수: 단독 할당문이라 npm view 실패(오프라인·레지스트리
+    # 오류)가 set -e로 스크립트 전체를 무메시지 종료시킨다 — 이후의 셸 설정
+    # 섹션과 실패 리포트까지 통째로 건너뛰게 됨.
+    latest=$(npm view "$pkg" version 2>/dev/null) || latest=""
     if [ -z "$installed" ]; then
         info "Installing $pkg..."
         npm install -g --no-fund --loglevel=error "$pkg" && ok "$pkg" || fail "$pkg"
+    elif [ -z "$latest" ]; then
+        warn "$pkg — 최신 버전 확인 실패(네트워크?), 설치된 $installed 유지"
     elif [ "$installed" != "$latest" ]; then
         info "Updating $pkg ($installed → $latest)..."
         npm install -g --no-fund --loglevel=error "$pkg" && ok "$pkg" || fail "$pkg"
@@ -153,9 +158,25 @@ ZSHRC="$HOME/.zshrc"
 # (e.g. plain `eval "$(starship init zsh)"`) count as configured and are
 # left untouched.
 append_zshrc() {
-    local signature="$1" label="$2" block="$3"
+    local signature="$1" label="$2" block="$3" tail="${4:-}"
     if grep -qE "$signature" "$ZSHRC" 2>/dev/null; then
-        ok "$label (already in .zshrc)"
+        ok "$label (already in .zshrc — 기존 설정 존중, 건너뜀)"
+        return 0
+    fi
+    # zsh-syntax-highlighting 블록은 반드시 파일 끝부분이어야 한다. 부분 재실행으로
+    # 새 기능 블록이 그 뒤에 붙지 않도록, 우리 syntax 블록이 이미 있으면 그 앞에
+    # 삽입한다. (tail 블록 = syntax/substring/타이머 리포트는 끝에 그대로 append)
+    local sh_marker='# ── zsh-syntax-highlighting'
+    if [ -z "$tail" ] && grep -qF "$sh_marker" "$ZSHRC" 2>/dev/null; then
+        local tmpb tmpf
+        tmpb="$(mktemp)"; tmpf="$(mktemp)"
+        printf '%s\n' "$block" > "$tmpb"
+        awk -v m="$sh_marker" -v bf="$tmpb" '
+            index($0, m) == 1 && !done { while ((getline l < bf) > 0) print l; print ""; done=1 }
+            { print }
+        ' "$ZSHRC" > "$tmpf" && mv "$tmpf" "$ZSHRC"
+        rm -f "$tmpb"
+        ok "$label → .zshrc (syntax-highlighting 앞에 삽입)"
     else
         printf '\n%s\n' "$block" >> "$ZSHRC"
         ok "$label → .zshrc"
@@ -186,7 +207,9 @@ alias cc='claude --dangerously-skip-permissions'
 alias ccc='cc --continue'
 alias ccr='cc --resume'
 EOF
-append_zshrc 'alias cc=' "Claude Code shortcuts (cc/ccc/ccr)" "$BLOCK"
+# cc는 넓게 매칭: 사용자가 alias cc='clang' 같은 개인 alias를 갖고 있으면
+# 가로채지 않고 존중한다 (claude 명령은 그대로 쓸 수 있음)
+append_zshrc '^[^#]*alias cc=' "Claude Code shortcuts (cc/ccc/ccr)" "$BLOCK"
 
 IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── zoxide ────────────────────────────────────────────────
@@ -219,8 +242,12 @@ append_zshrc 'starship init' "Starship prompt" "$BLOCK"
 
 IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── zsh-autosuggestions (히스토리 기반 회색 자동제안, →로 수락) ──
-if [ -f "${HOMEBREW_PREFIX:-/opt/homebrew}/share/zsh-autosuggestions/zsh-autosuggestions.zsh" ]; then
-    source "${HOMEBREW_PREFIX:-/opt/homebrew}/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
+# Apple Silicon(/opt/homebrew)과 Intel(/usr/local) 모두 지원 — 환경변수에
+# 의존하면 HOMEBREW_PREFIX 미설정 셸(Intel 비로그인 등)에서 조용히 미로드됨
+if [ -f /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh ]; then
+    source /opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+elif [ -f /usr/local/share/zsh-autosuggestions/zsh-autosuggestions.zsh ]; then
+    source /usr/local/share/zsh-autosuggestions/zsh-autosuggestions.zsh
 fi
 EOF
 append_zshrc 'zsh-autosuggestions' "zsh-autosuggestions" "$BLOCK"
@@ -233,7 +260,7 @@ if command -v eza &>/dev/null; then
     alias lt='eza --tree --icons'
 fi
 EOF
-append_zshrc 'alias ll=' "eza aliases (ll/la/lt)" "$BLOCK"
+append_zshrc '^[^#]*alias ll=.?eza' "eza aliases (ll/la/lt)" "$BLOCK"
 
 IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── bat (cat 대체: 문법 하이라이트·줄번호) ─────────────────
@@ -241,7 +268,7 @@ if command -v bat &>/dev/null; then
     alias cat='bat --paging=never'
 fi
 EOF
-append_zshrc 'alias cat=' "bat alias (cat)" "$BLOCK"
+append_zshrc '^[^#]*alias cat=.?bat' "bat alias (cat)" "$BLOCK"
 
 IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── fd + fzf 연동 (Ctrl+T 파일검색 가속, .gitignore 존중) ──
@@ -272,8 +299,12 @@ if grep -qE 'brew shellenv' "$ZSHRC" "$HOME/.zprofile" 2>/dev/null; then
     ok "Homebrew shellenv (already configured)"
 else
     IFS= read -r -d '' BLOCK <<'EOF' || true
-# ── Homebrew (Apple Silicon) ──────────────────────────────
-[ -f "/opt/homebrew/bin/brew" ] && eval "$(/opt/homebrew/bin/brew shellenv)"
+# ── Homebrew (Apple Silicon: /opt/homebrew, Intel: /usr/local) ──
+if [ -f /opt/homebrew/bin/brew ]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+elif [ -x /usr/local/bin/brew ]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+fi
 EOF
     append_zshrc 'brew shellenv' "Homebrew shellenv" "$BLOCK"
 fi
@@ -282,21 +313,27 @@ fi
 # history-substring-search는 그보다도 뒤여야 함 (플러그인 공식 권장 순서)
 IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── zsh-syntax-highlighting (명령 유효/오타 색상 — 반드시 끝부분) ──
-if [ -f "${HOMEBREW_PREFIX:-/opt/homebrew}/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ]; then
-    source "${HOMEBREW_PREFIX:-/opt/homebrew}/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+if [ -f /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]; then
+    source /opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+elif [ -f /usr/local/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]; then
+    source /usr/local/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 fi
 EOF
-append_zshrc 'zsh-syntax-highlighting' "zsh-syntax-highlighting" "$BLOCK"
+append_zshrc 'zsh-syntax-highlighting' "zsh-syntax-highlighting" "$BLOCK" tail
 
 IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── zsh-history-substring-search (↑↓ 부분일치 검색) ───────
-if [ -f "${HOMEBREW_PREFIX:-/opt/homebrew}/share/zsh-history-substring-search/zsh-history-substring-search.zsh" ]; then
-    source "${HOMEBREW_PREFIX:-/opt/homebrew}/share/zsh-history-substring-search/zsh-history-substring-search.zsh"
+if [ -f /opt/homebrew/share/zsh-history-substring-search/zsh-history-substring-search.zsh ]; then
+    source /opt/homebrew/share/zsh-history-substring-search/zsh-history-substring-search.zsh
+elif [ -f /usr/local/share/zsh-history-substring-search/zsh-history-substring-search.zsh ]; then
+    source /usr/local/share/zsh-history-substring-search/zsh-history-substring-search.zsh
+fi
+if type history-substring-search-up &>/dev/null; then
     bindkey '^[[A' history-substring-search-up
     bindkey '^[[B' history-substring-search-down
 fi
 EOF
-append_zshrc 'history-substring-search' "zsh-history-substring-search" "$BLOCK"
+append_zshrc 'history-substring-search' "zsh-history-substring-search" "$BLOCK" tail
 
 if [ "$HAND_CONFIGURED" = 0 ]; then
     IFS= read -r -d '' BLOCK <<'EOF' || true
@@ -306,7 +343,7 @@ if [ -n "$_shell_start" ]; then
     unset _shell_start
 fi
 EOF
-    append_zshrc '\[shell\] loaded' "startup time report" "$BLOCK"
+    append_zshrc '\[shell\] loaded' "startup time report" "$BLOCK" tail
 fi
 
 # ── 7. SSH agent ──────────────────────────────────────────
@@ -359,5 +396,7 @@ echo ""
 echo -e "${GREEN}=============================================${NC}"
 echo -e "${CYAN}  Done in ${ELAPSED}s${NC}"
 echo -e "${CYAN}  NEXT STEP: Open a new terminal to apply${NC}"
-echo -e "${CYAN}  changes, then run: cc --version${NC}"
+echo -e "${CYAN}  changes, then run: claude --version${NC}"
+echo -e "${CYAN}  아이콘이 □로 깨지면: 터미널 설정에서 폰트를${NC}"
+echo -e "${CYAN}  'JetBrainsMono Nerd Font'로 변경하세요${NC}"
 echo -e "${GREEN}=============================================${NC}"

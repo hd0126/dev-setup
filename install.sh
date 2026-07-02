@@ -31,15 +31,24 @@ fi
 echo -e "${GREEN}[OS]${NC} Detected: $OS"
 echo ""
 
-# ── 설치 스크립트 다운로드 및 실행 ───────────────────────
+# ── 설치 스크립트 실행 ────────────────────────────────────
+# 레포 클론 안에서 실행하면(스크립트 옆에 setup-*.sh 존재) 로컬 파일을 사용한다
+# — 항상 GitHub main을 받으면 로컬에서 수정한 내용이 조용히 무시되기 때문.
+# `curl | bash` 실행은 스크립트 파일 경로가 없으므로 자동으로 다운로드 경로를 탄다.
 SETUP_SCRIPT="setup-${OS}.sh"
-TMP_SCRIPT=$(mktemp)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
 
-echo -e "${CYAN}[..]${NC} Downloading $SETUP_SCRIPT..."
-curl -fsSL "$REPO_RAW/$SETUP_SCRIPT" -o "$TMP_SCRIPT"
-chmod +x "$TMP_SCRIPT"
-
-echo -e "${CYAN}[..]${NC} Running $SETUP_SCRIPT..."
-echo ""
-bash "$TMP_SCRIPT"
-rm -f "$TMP_SCRIPT"
+if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/$SETUP_SCRIPT" ]; then
+    echo -e "${CYAN}[..]${NC} Running local $SETUP_SCRIPT (repo clone detected: $SCRIPT_DIR)..."
+    echo ""
+    bash "$SCRIPT_DIR/$SETUP_SCRIPT"
+else
+    TMP_SCRIPT=$(mktemp)
+    echo -e "${CYAN}[..]${NC} Downloading $SETUP_SCRIPT..."
+    curl -fsSL "$REPO_RAW/$SETUP_SCRIPT" -o "$TMP_SCRIPT"
+    chmod +x "$TMP_SCRIPT"
+    echo -e "${CYAN}[..]${NC} Running $SETUP_SCRIPT..."
+    echo ""
+    bash "$TMP_SCRIPT"
+    rm -f "$TMP_SCRIPT"
+fi

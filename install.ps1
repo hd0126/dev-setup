@@ -1,10 +1,15 @@
-# Windows setup script (winget + npm)
-# Run as Administrator (Windows PowerShell or pwsh):
+﻿# Windows setup script (winget + npm)
+# Run (admin NOT required - installs are user-scope; only retry as Administrator
+# if a system-wide install fails with access denied):
 #   powershell -ExecutionPolicy Bypass -File install.ps1
 #   pwsh      -ExecutionPolicy Bypass -File install.ps1
 #
 # One-liner (safe even on a fresh PC with default Restricted policy):
 #   irm https://raw.githubusercontent.com/hd0126/dev-setup/main/install.ps1 | iex
+
+# 파일 실행이면 경로, irm | iex면 빈 값. irm | iex에서 `exit`는 사용자의
+# 터미널 세션을 통째로 닫아버리므로, 중단할 때 이 값으로 exit/return을 고른다.
+$RunAsFile = [bool]$PSCommandPath
 
 # ── Allow scripts in THIS process so npm.ps1 and the profile can load ──
 # Default Windows policy is Restricted, which blocks npm (npm is npm.ps1).
@@ -57,8 +62,8 @@ $packages = @(
     @{
         Id   = "Starship.Starship"
         Name = "Starship"
-        Desc = "Fast customizable prompt. Shows Git branch and status."
-        Ex   = "git branch -> shown in prompt"
+        Desc = "Fast prompt. NOTE: this profile uses its own pure-PS prompt for speed; Starship is installed but idle until you enable it (see README)."
+        Ex   = "'Invoke-Expression (&starship init powershell)' | Add-Content `$PROFILE"
         On   = $true
     },
     @{
@@ -188,7 +193,7 @@ function Show-Menu {
             13 { $Host.UI.RawUI.CursorSize = 25; return $items }
             37 { if ($canGoBack) { $Host.UI.RawUI.CursorSize = 25; return "__BACK__" } }   # Left arrow -> previous page
             8  { if ($canGoBack) { $Host.UI.RawUI.CursorSize = 25; return "__BACK__" } }   # Backspace  -> previous page
-            27 { $Host.UI.RawUI.CursorSize = 25; Write-Host "Cancelled." -ForegroundColor Red; exit 0 }
+            27 { $Host.UI.RawUI.CursorSize = 25; return "__CANCEL__" }   # Esc -> cancel (exit는 iex 세션을 닫으므로 금지)
         }
     }
 }
@@ -202,12 +207,16 @@ if ($NonInteractive) {
 } else {
     Clear-Host
     $step = 0
+    $cancelled = $false
     while ($step -lt 2) {
         if ($step -eq 0) {
-            $packages = Show-Menu -items $packages -title "Packages to install"
+            $res = Show-Menu -items $packages -title "Packages to install"
+            if ($res -is [string] -and $res -eq "__CANCEL__") { $cancelled = $true; break }
+            $packages = $res
             $step++
         } else {
             $res = Show-Menu -items $npmPackages -title "AI CLI tools" -canGoBack $true
+            if ($res -is [string] -and $res -eq "__CANCEL__") { $cancelled = $true; break }
             if ($res -is [string] -and $res -eq "__BACK__") {
                 $step--          # go back to the winget page
             } else {
@@ -215,6 +224,10 @@ if ($NonInteractive) {
                 $step++
             }
         }
+    }
+    if ($cancelled) {
+        Write-Host "Cancelled." -ForegroundColor Red
+        if ($RunAsFile) { exit 0 } else { return }
     }
 }
 
@@ -245,7 +258,7 @@ Write-Host "Starting installation..." -ForegroundColor Green
 # ── Check winget ──────────────────────────────────────────
 if (-not $DryRun -and -not (Get-Command winget -ErrorAction SilentlyContinue)) {
     Write-Host "winget not found. Install 'App Installer' from Microsoft Store." -ForegroundColor Red
-    exit 1
+    if ($RunAsFile) { exit 1 } else { return }
 }
 
 # ── Install winget packages ───────────────────────────────
@@ -352,6 +365,10 @@ if ($zoxidePkg -and $zoxidePkg.On -and -not $DryRun -and -not (Get-Command zoxid
 }
 
 # ── Install npm packages ──────────────────────────────────
+# 요약부(line ~710)가 이 두 플래그를 읽으므로 npm 블록 진입 여부와 무관하게,
+# 그리고 strict-mode 프로필에서도 안전하도록 여기서 초기화한다.
+$npmNativeFail  = $false
+$npmNetworkFail = $false
 $selectedNpm = $npmPackages | Where-Object { $_.On }
 if ($selectedNpm) {
     # npm is only needed for non-native CLIs (codex and Claude Code use native installers).
@@ -364,12 +381,11 @@ if ($selectedNpm) {
         if (-not $npmCmd) {
             Write-Host ""
             Write-Host "npm not found. Restart PowerShell and run this script again." -ForegroundColor Red
-            exit 1
+            if ($RunAsFile) { exit 1 } else { return }
         }
     }
     $npmTotal = @($selectedNpm).Count
     $npmIdx   = 0
-    $npmNativeFail = $false
     Write-Host "Installing AI CLI tools..." -ForegroundColor Cyan
     foreach ($pkg in $selectedNpm) {
         $npmIdx++
@@ -395,6 +411,14 @@ if ($selectedNpm) {
         # The child runs with -ExecutionPolicy Bypass so the saved .ps1 runs under the
         # default Restricted policy too.
         if ($isNative) {
+            # 이미 네이티브 설치돼 있으면 대용량 재다운로드 skip — 네이티브 빌드는
+            # 백그라운드 자동 업데이트가 있어 기존 설치로 충분 (mac/linux와 동일 동작)
+            $nativeExe = if ($pkg.Name -eq 'Claude Code') { 'claude.exe' } else { 'codex.exe' }
+            $nativeBin = Join-Path $env:USERPROFILE ".local\bin\$nativeExe"
+            if (Test-Path $nativeBin) {
+                Write-Host " [OK - already installed (native, self-updating)]" -ForegroundColor Green
+                continue
+            }
             Write-Host ""
             $tmp = Join-Path $env:TEMP "devsetup-native-$npmIdx.ps1"
             try {
@@ -520,6 +544,12 @@ if (-not $DryRun) {
         Write-Host "  Existing profile backed up: $bakPath" -ForegroundColor DarkGray
     }
     Invoke-WebRequest -Uri $gistUrl -OutFile $pwshProfilePath -UseBasicParsing
+
+    # 방금 설치된 도구(zoxide/fzf/starship)가 프로필의 도구 캐시에 반영되도록
+    # 캐시를 무효화한다 — 안 하면 이전 캐시(도구 없음)가 남아 zoxide/fzf가
+    # 새 터미널에서도 계속 비활성 상태로 보인다.
+    Remove-Item "$env:TEMP\pwsh_tools_cache.ps1", "$env:TEMP\zoxide_init_cache.ps1" -Force -ErrorAction SilentlyContinue
+    Write-Host "  Tool cache invalidated (fresh detection on next shell)." -ForegroundColor DarkGray
 } else {
     Write-Host "[DRY-RUN] would download the PowerShell profile to `$PROFILE." -ForegroundColor DarkGray
 }
@@ -626,7 +656,7 @@ if ($fontPkg -and $fontPkg.On -and -not $DryRun) {
 # ── Claude Code plugins (manual, after login) ─────────────
 Write-Host ""
 Write-Host "-- Claude Code plugins (run after login) --" -ForegroundColor Yellow
-Write-Host "  claude login"
+Write-Host "  claude auth login"
 Write-Host "  claude plugin marketplace add Yeachan-Heo/oh-my-claudecode"
 Write-Host "  claude plugin install oh-my-claudecode@omc"
 Write-Host "  claude plugin marketplace add openai/codex-plugin-cc"
@@ -695,7 +725,11 @@ $(( $failedPkgs | ForEach-Object { "- $_" } ) -join "`n")
 }
 
 # Dry-run ends here: the plan was printed, the post-install steps below don't apply.
-if ($DryRun) { Write-Host ""; exit 0 }
+if ($DryRun) {
+    Write-Host ""
+    if ($RunAsFile) { exit 0 }   # 파일 실행(CI 포함): 종료 코드 유지
+    return                       # irm | iex: exit는 터미널 세션을 닫으므로 return
+}
 
 # Optional extras (fonts) - informational only, never a real failure
 if ($optionalFails.Count -gt 0) {

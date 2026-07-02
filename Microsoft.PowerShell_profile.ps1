@@ -1,4 +1,4 @@
-# --- 0. Profile load timer ---
+﻿# --- 0. Profile load timer ---
 $profileStart = Get-Date
 
 # --- 1. Claude Code shortcuts ---
@@ -41,6 +41,12 @@ if ($hasZoxide) {
 
 # --- 5. PSReadLine (ConsoleHost only) ---
 if ($Host.Name -eq 'ConsoleHost') {
+    # fzf 파이프를 오가는 한글 히스토리가 mojibake로 깨지지 않도록 콘솔을 UTF-8로.
+    # (레거시 코드페이지 콘솔에서 fzf가 CP949로 주고받으면 선택 결과가 깨진다)
+    try {
+        [Console]::OutputEncoding = [Text.Encoding]::UTF8
+        [Console]::InputEncoding  = [Text.Encoding]::UTF8
+    } catch {}
     try {
         Set-PSReadLineOption -PredictionSource History -PredictionViewStyle InlineView
         Set-PSReadLineOption -Colors @{ InlinePrediction = '#8A8A8A' }

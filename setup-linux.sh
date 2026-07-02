@@ -33,14 +33,18 @@ install_apt fzf
 install_apt python3
 install_apt python3-pip
 
-# 배포판 버전에 따라 apt에 없을 수 있는 패키지 — 없으면 경고만 하고 계속
+# 배포판 버전에 따라 apt에 없을 수 있는 패키지 — 없으면 경고만 하고 계속.
+# apt-cache로 '저장소에 없음'과 '설치 실패'를 구분(락 대기·네트워크 오류를
+# '없음'으로 오진하지 않음). 설치 출력은 숨기지 않는다 — sudo 비밀번호
+# 프롬프트까지 숨겨지면 멈춘 것처럼 보이기 때문.
 install_apt_opt() {
     if dpkg -s "$1" &>/dev/null; then
         ok "$1 (already installed)"
-    elif sudo apt-get install -y -q "$1" &>/dev/null; then
-        ok "$1"
+    elif ! apt-cache show "$1" &>/dev/null; then
+        warn "$1 — apt 저장소에 없음(배포판 버전에 따라 다름), 건너뜀"
     else
-        warn "$1 — apt 저장소에 없음(구버전 배포판), 건너뜀"
+        info "Installing $1..."
+        sudo apt-get install -y -q "$1" && ok "$1" || fail "$1"
     fi
 }
 
@@ -73,10 +77,26 @@ else
 fi
 
 # npm 전역 패키지를 sudo 없이 설치하도록 prefix 설정 (~/.npm-global)
+# 단, prefix가 시스템 경로(/usr 등, sudo 필요)일 때만 변경 — nvm 등
+# 사용자가 이미 쓰기 가능한 prefix를 쓰고 있으면 건드리지 않는다
+# (nvm은 prefix를 바꾸면 동작이 깨진다).
 if command -v npm &>/dev/null; then
-    mkdir -p "$HOME/.npm-global"
-    npm config set prefix "$HOME/.npm-global"
-    export PATH="$HOME/.npm-global/bin:$PATH"
+    cur_prefix=$(npm config get prefix 2>/dev/null || echo "")
+    case "$cur_prefix" in
+        /usr|/usr/local)
+            mkdir -p "$HOME/.npm-global"
+            npm config set prefix "$HOME/.npm-global"
+            export PATH="$HOME/.npm-global/bin:$PATH"
+            ok "npm prefix → ~/.npm-global (sudo 없이 npm install -g)"
+            ;;
+        "$HOME/.npm-global")
+            export PATH="$HOME/.npm-global/bin:$PATH"
+            ok "npm prefix (~/.npm-global — already configured)"
+            ;;
+        *)
+            ok "npm prefix (기존 설정 유지: ${cur_prefix:-unknown})"
+            ;;
+    esac
 fi
 
 # ── 5. Starship ───────────────────────────────────────────
@@ -110,10 +130,15 @@ install_npm() {
     local installed latest
     # grep -E only (BSD/GNU 공통) — -P는 macOS BSD grep에 없음
     installed=$(npm list -g --depth=0 2>/dev/null | grep -F "$pkg@" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+[^ ]*' | head -1)
-    latest=$(npm view "$pkg" version 2>/dev/null)
+    # `|| latest=""` 가드 필수: 단독 할당문이라 npm view 실패(오프라인·레지스트리
+    # 오류)가 set -e로 스크립트 전체를 무메시지 종료시킨다 — 이후의 셸 설정
+    # 섹션과 실패 리포트까지 통째로 건너뛰게 됨.
+    latest=$(npm view "$pkg" version 2>/dev/null) || latest=""
     if [ -z "$installed" ]; then
         info "Installing $pkg..."
         npm install -g --no-fund --loglevel=error "$pkg" && ok "$pkg" || fail "$pkg"
+    elif [ -z "$latest" ]; then
+        warn "$pkg — 최신 버전 확인 실패(네트워크?), 설치된 $installed 유지"
     elif [ "$installed" != "$latest" ]; then
         info "Updating $pkg ($installed → $latest)..."
         npm install -g --no-fund --loglevel=error "$pkg" && ok "$pkg" || fail "$pkg"
@@ -190,9 +215,25 @@ fi
 # equivalents (e.g. plain `eval "$(starship init zsh)"`) count as configured
 # and are left untouched.
 append_cfg() {
-    local cfg="$1" signature="$2" label="$3" block="$4"
+    local cfg="$1" signature="$2" label="$3" block="$4" tail="${5:-}"
     if grep -qE "$signature" "$cfg" 2>/dev/null; then
-        ok "$label (already in $cfg)"
+        ok "$label (already in $cfg — 기존 설정 존중, 건너뜀)"
+        return 0
+    fi
+    # zsh-syntax-highlighting 블록은 반드시 파일 끝부분이어야 한다. 부분 재실행으로
+    # 새 기능 블록이 그 뒤에 붙지 않도록, 우리 syntax 블록이 이미 있으면 그 앞에
+    # 삽입한다. (tail 블록 = syntax/타이머 리포트는 끝에 그대로 append)
+    local sh_marker='# ── zsh-syntax-highlighting'
+    if [ -z "$tail" ] && grep -qF "$sh_marker" "$cfg" 2>/dev/null; then
+        local tmpb tmpf
+        tmpb="$(mktemp)"; tmpf="$(mktemp)"
+        printf '%s\n' "$block" > "$tmpb"
+        awk -v m="$sh_marker" -v bf="$tmpb" '
+            index($0, m) == 1 && !done { while ((getline l < bf) > 0) print l; print ""; done=1 }
+            { print }
+        ' "$cfg" > "$tmpf" && mv "$tmpf" "$cfg"
+        rm -f "$tmpb"
+        ok "$label → $cfg (syntax-highlighting 앞에 삽입)"
     else
         printf '\n%s\n' "$block" >> "$cfg"
         ok "$label → $cfg"
@@ -225,18 +266,37 @@ alias cc='claude --dangerously-skip-permissions'
 alias ccc='cc --continue'
 alias ccr='cc --resume'
 EOF
-        append_cfg "$cfg" 'alias cc=' "Claude Code shortcuts (cc/ccc/ccr)" "$BLOCK"
+        # cc는 넓게 매칭: 사용자의 개인 alias cc(예: clang)를 가로채지 않고 존중
+        append_cfg "$cfg" '^[^#]*alias cc=' "Claude Code shortcuts (cc/ccc/ccr)" "$BLOCK"
+        # PATH 블록은 이를 참조하는 도구 init(zoxide 등)보다 먼저 와야 한다
+        IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── npm global bin (no-sudo prefix) ──────────────────────
+case ":$PATH:" in *":$HOME/.npm-global/bin:"*) ;; *) export PATH="$HOME/.npm-global/bin:$PATH" ;; esac
+EOF
+        append_cfg "$cfg" '\.npm-global' "npm global bin PATH" "$BLOCK"
+        IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── uv / native installers (~/.local/bin) ────────────────
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
+EOF
+        append_cfg "$cfg" '\.local/bin' "~/.local/bin PATH (uv, native installers)" "$BLOCK"
         IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── zoxide ────────────────────────────────────────────────
-if command -v zoxide &>/dev/null; then
+# zoxide는 ~/.local/bin에 설치됨 — PATH 반영 전이라도 동작하도록 보강
+if [ -x "$HOME/.local/bin/zoxide" ] || command -v zoxide &>/dev/null; then
+    case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
     eval "$(zoxide init zsh --cmd z)"
 fi
 EOF
         append_cfg "$cfg" 'zoxide init' "zoxide" "$BLOCK"
         IFS= read -r -d '' BLOCK <<'EOF' || true
-# ── fzf ───────────────────────────────────────────────────
+# ── fzf (Ctrl+R 히스토리 · Ctrl+T 파일 검색) ──────────────
 if command -v fzf &>/dev/null; then
-    source <(fzf --zsh 2>/dev/null || true)
+    if fzf --zsh &>/dev/null; then
+        source <(fzf --zsh)
+    elif [ -f /usr/share/doc/fzf/examples/key-bindings.zsh ]; then
+        # 구버전 fzf(<0.48, apt 기본)는 --zsh 미지원 → 배포판 키바인딩 파일 사용
+        source /usr/share/doc/fzf/examples/key-bindings.zsh
+    fi
 fi
 EOF
         append_cfg "$cfg" 'fzf --zsh' "fzf" "$BLOCK"
@@ -267,7 +327,7 @@ if command -v eza &>/dev/null; then
     alias lt='eza --tree'
 fi
 EOF
-        append_cfg "$cfg" 'alias ll=' "eza aliases (ll/la/lt)" "$BLOCK"
+        append_cfg "$cfg" '^[^#]*alias ll=.?eza' "eza aliases (ll/la/lt)" "$BLOCK"
         IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── bat (cat 대체: 문법 하이라이트) — Ubuntu는 batcat ─────
 if command -v bat &>/dev/null; then
@@ -276,7 +336,7 @@ elif command -v batcat &>/dev/null; then
     alias cat='batcat --paging=never'
 fi
 EOF
-        append_cfg "$cfg" 'alias cat=' "bat alias (cat)" "$BLOCK"
+        append_cfg "$cfg" '^[^#]*alias cat=.?bat' "bat alias (cat)" "$BLOCK"
         IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── fd + fzf 연동 (Ctrl+T 파일검색 가속) — Ubuntu는 fdfind ──
 if command -v fd &>/dev/null; then
@@ -288,16 +348,6 @@ elif command -v fdfind &>/dev/null; then
 fi
 EOF
         append_cfg "$cfg" 'FZF_DEFAULT_COMMAND' "fd + fzf integration" "$BLOCK"
-        IFS= read -r -d '' BLOCK <<'EOF' || true
-# ── npm global bin (no-sudo prefix) ──────────────────────
-case ":$PATH:" in *":$HOME/.npm-global/bin:"*) ;; *) export PATH="$HOME/.npm-global/bin:$PATH" ;; esac
-EOF
-        append_cfg "$cfg" '\.npm-global' "npm global bin PATH" "$BLOCK"
-        IFS= read -r -d '' BLOCK <<'EOF' || true
-# ── uv / native installers (~/.local/bin) ────────────────
-case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
-EOF
-        append_cfg "$cfg" '\.local/bin' "~/.local/bin PATH (uv, native installers)" "$BLOCK"
         # syntax-highlighting은 모든 위젯 로드 후 마지막에 source (플러그인 공식 권장)
         IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── zsh-syntax-highlighting (명령 유효/오타 색상 — 반드시 끝부분) ──
@@ -305,7 +355,7 @@ if [ -f /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]; then
     source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 fi
 EOF
-        append_cfg "$cfg" 'zsh-syntax-highlighting' "zsh-syntax-highlighting" "$BLOCK"
+        append_cfg "$cfg" 'zsh-syntax-highlighting' "zsh-syntax-highlighting" "$BLOCK" tail
         if [ "$hand_configured" = 0 ]; then
             IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── Startup time ──────────────────────────────────────────
@@ -314,7 +364,7 @@ if [ -n "$_shell_start" ]; then
     unset _shell_start
 fi
 EOF
-            append_cfg "$cfg" '\[shell\] loaded' "startup time report" "$BLOCK"
+            append_cfg "$cfg" '\[shell\] loaded' "startup time report" "$BLOCK" tail
         fi
 
     else
@@ -332,18 +382,37 @@ alias cc='claude --dangerously-skip-permissions'
 alias ccc='cc --continue'
 alias ccr='cc --resume'
 EOF
-        append_cfg "$cfg" 'alias cc=' "Claude Code shortcuts (cc/ccc/ccr)" "$BLOCK"
+        # cc는 넓게 매칭: 사용자의 개인 alias cc(예: clang)를 가로채지 않고 존중
+        append_cfg "$cfg" '^[^#]*alias cc=' "Claude Code shortcuts (cc/ccc/ccr)" "$BLOCK"
+        # PATH 블록은 이를 참조하는 도구 init(zoxide 등)보다 먼저 와야 한다
+        IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── npm global bin (no-sudo prefix) ──────────────────────
+case ":$PATH:" in *":$HOME/.npm-global/bin:"*) ;; *) export PATH="$HOME/.npm-global/bin:$PATH" ;; esac
+EOF
+        append_cfg "$cfg" '\.npm-global' "npm global bin PATH" "$BLOCK"
+        IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── uv / native installers (~/.local/bin) ────────────────
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
+EOF
+        append_cfg "$cfg" '\.local/bin' "~/.local/bin PATH (uv, native installers)" "$BLOCK"
         IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── zoxide ────────────────────────────────────────────────
-if command -v zoxide &>/dev/null; then
+# zoxide는 ~/.local/bin에 설치됨 — PATH 반영 전이라도 동작하도록 보강
+if [ -x "$HOME/.local/bin/zoxide" ] || command -v zoxide &>/dev/null; then
+    case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
     eval "$(zoxide init bash --cmd z)"
 fi
 EOF
         append_cfg "$cfg" 'zoxide init' "zoxide" "$BLOCK"
         IFS= read -r -d '' BLOCK <<'EOF' || true
-# ── fzf ───────────────────────────────────────────────────
+# ── fzf (Ctrl+R 히스토리 · Ctrl+T 파일 검색) ──────────────
 if command -v fzf &>/dev/null; then
-    eval "$(fzf --bash 2>/dev/null || true)"
+    if fzf --bash &>/dev/null; then
+        eval "$(fzf --bash)"
+    elif [ -f /usr/share/doc/fzf/examples/key-bindings.bash ]; then
+        # 구버전 fzf(<0.48, apt 기본)는 --bash 미지원 → 배포판 키바인딩 파일 사용
+        source /usr/share/doc/fzf/examples/key-bindings.bash
+    fi
 fi
 EOF
         append_cfg "$cfg" 'fzf --bash' "fzf" "$BLOCK"
@@ -367,7 +436,7 @@ if command -v eza &>/dev/null; then
     alias lt='eza --tree'
 fi
 EOF
-        append_cfg "$cfg" 'alias ll=' "eza aliases (ll/la/lt)" "$BLOCK"
+        append_cfg "$cfg" '^[^#]*alias ll=.?eza' "eza aliases (ll/la/lt)" "$BLOCK"
         IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── bat (cat 대체: 문법 하이라이트) — Ubuntu는 batcat ─────
 if command -v bat &>/dev/null; then
@@ -376,7 +445,7 @@ elif command -v batcat &>/dev/null; then
     alias cat='batcat --paging=never'
 fi
 EOF
-        append_cfg "$cfg" 'alias cat=' "bat alias (cat)" "$BLOCK"
+        append_cfg "$cfg" '^[^#]*alias cat=.?bat' "bat alias (cat)" "$BLOCK"
         IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── fd + fzf 연동 (Ctrl+T 파일검색 가속) — Ubuntu는 fdfind ──
 if command -v fd &>/dev/null; then
@@ -388,16 +457,6 @@ elif command -v fdfind &>/dev/null; then
 fi
 EOF
         append_cfg "$cfg" 'FZF_DEFAULT_COMMAND' "fd + fzf integration" "$BLOCK"
-        IFS= read -r -d '' BLOCK <<'EOF' || true
-# ── npm global bin (no-sudo prefix) ──────────────────────
-case ":$PATH:" in *":$HOME/.npm-global/bin:"*) ;; *) export PATH="$HOME/.npm-global/bin:$PATH" ;; esac
-EOF
-        append_cfg "$cfg" '\.npm-global' "npm global bin PATH" "$BLOCK"
-        IFS= read -r -d '' BLOCK <<'EOF' || true
-# ── uv / native installers (~/.local/bin) ────────────────
-case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
-EOF
-        append_cfg "$cfg" '\.local/bin' "~/.local/bin PATH (uv, native installers)" "$BLOCK"
         if [ "$hand_configured" = 0 ]; then
             IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── Startup time ──────────────────────────────────────────
@@ -406,7 +465,7 @@ if [ -n "$_shell_start" ]; then
     unset _shell_start
 fi
 EOF
-            append_cfg "$cfg" '\[shell\] loaded' "startup time report" "$BLOCK"
+            append_cfg "$cfg" '\[shell\] loaded' "startup time report" "$BLOCK" tail
         fi
 
     fi
@@ -417,10 +476,22 @@ done
 SSH_AGENT_SNIPPET=$(cat <<'SSHSNIPPET'
 
 # ── SSH agent ─────────────────────────────────────────────
-if [ -z "$SSH_AUTH_SOCK" ]; then
-    eval "$(ssh-agent -s)" &>/dev/null
-    ssh_key=$(find "$HOME/.ssh" -maxdepth 1 -type f ! -name "*.pub" ! -name "known_hosts" ! -name "config" | head -1)
-    [ -n "$ssh_key" ] && ssh-add "$ssh_key" &>/dev/null
+# 셸마다 에이전트를 새로 띄우지 않고 ~/.ssh/agent.env로 재사용(고아 프로세스 방지).
+# 개인키가 있을 때만 에이전트를 시작하고, known_hosts류·authorized_keys는 제외.
+if [ -z "$SSH_AUTH_SOCK" ] && [ -d "$HOME/.ssh" ]; then
+    [ -f "$HOME/.ssh/agent.env" ] && . "$HOME/.ssh/agent.env" >/dev/null
+    if [ -z "$SSH_AUTH_SOCK" ] || [ -z "$SSH_AGENT_PID" ] || ! kill -0 "$SSH_AGENT_PID" 2>/dev/null; then
+        _ssh_key=$(find "$HOME/.ssh" -maxdepth 1 -type f \
+            ! -name "*.pub" ! -name "known_hosts*" ! -name "authorized_keys" \
+            ! -name "config" ! -name "agent.env" ! -name "*.old" 2>/dev/null | head -1)
+        if [ -n "$_ssh_key" ]; then
+            ssh-agent -s > "$HOME/.ssh/agent.env" 2>/dev/null
+            chmod 600 "$HOME/.ssh/agent.env" 2>/dev/null
+            . "$HOME/.ssh/agent.env" >/dev/null
+            ssh-add "$_ssh_key" 2>/dev/null
+        fi
+        unset _ssh_key
+    fi
 fi
 SSHSNIPPET
 )
@@ -441,7 +512,9 @@ if [ ${#FAILED[@]} -gt 0 ]; then
     warn "${#FAILED[@]} item(s) failed:"
     for f in "${FAILED[@]}"; do echo -e "  ${RED}[FAILED]${NC} $f"; done
 
-    DISTRO=$(grep -oP '(?<=PRETTY_NAME=").*(?=")' /etc/os-release 2>/dev/null || uname -sr)
+    # POSIX-safe (grep -P는 BSD grep에 없고, 여기선 서브셸 sourcing이 가장 견고)
+    DISTRO=$( (. /etc/os-release 2>/dev/null && printf '%s' "$PRETTY_NAME") || uname -sr)
+    [ -n "$DISTRO" ] || DISTRO=$(uname -sr)
     TITLE="[install] ${#FAILED[@]} issue(s) on Linux"
     BODY="## 환경 (Environment)
 - OS: ${DISTRO} ($(uname -m))
@@ -480,5 +553,5 @@ echo ""
 echo -e "${GREEN}=============================================${NC}"
 echo -e "${CYAN}  Done in ${ELAPSED}s${NC}"
 echo -e "${CYAN}  NEXT STEP: Open a new terminal to apply${NC}"
-echo -e "${CYAN}  changes, then run: cc --version${NC}"
+echo -e "${CYAN}  changes, then run: claude --version${NC}"
 echo -e "${GREEN}=============================================${NC}"
