@@ -11,6 +11,7 @@
 - [처음 설치 (신규)](#처음-설치-신규)
   - [🪟 Windows](#-windows)
   - [🐧 Linux / 🍎 macOS](#-linux-ubuntudebian---macos)
+- [설치 확인](#설치-확인)
 - [설치 후 자동 적용되는 설정](#설치-후-자동-적용되는-설정)
   - [🪟 Windows (PowerShell)](#-windows-powershell)
   - [🐧 Linux / WSL (bash/zsh)](#-linux--wsl-bashzsh)
@@ -26,6 +27,7 @@
   - [🔍 fzf](#-fzf)
   - [🔤 JetBrainsMono Nerd Font](#-jetbrainsmono-nerd-font)
   - [🔎 ripgrep](#-ripgrep)
+  - [✨ 쾌적함 플러스 도구](#-쾌적함-플러스-도구)
   - [🤖 Claude Code](#-claude-code)
   - [🟩 Node.js LTS](#-nodejs-lts)
   - [🐍 Python 3.12](#-python-312)
@@ -84,17 +86,38 @@ curl -fsSL https://raw.githubusercontent.com/hd0126/dev-setup/main/install.sh | 
 - apt로 curl, git, ripgrep, fzf, python3, python3-pip, unzip 설치; gh는 GitHub 공식 apt 저장소를 추가해 설치 (시스템 기본 버전 유지)
 - NodeSource 저장소로 Node.js LTS 설치 (npm 전역 prefix를 `~/.npm-global`로 설정 → sudo 없이 `npm install -g`)
 - curl로 Starship, zoxide, uv 설치
+- [쾌적함 플러스 도구](#-쾌적함-플러스-도구): zsh-autosuggestions · zsh-syntax-highlighting · eza · bat · fd · git-delta · tealdeer (apt에 없는 배포판은 자동 skip)
 - claude·codex는 공식 네이티브 인스톨러로, gemini-cli·omc·omx는 npm으로 설치
 - `.bashrc` / `.zshrc`에 `cc`, `ccc`, `ccr`, zoxide, fzf, starship 설정 추가
 
 **macOS** 에서 자동으로 처리합니다:
 - Homebrew 없으면 자동 설치
 - brew로 git, gh, ripgrep, fzf, zoxide, starship, python, uv, node 설치
+- [쾌적함 플러스 도구](#-쾌적함-플러스-도구): zsh-autosuggestions · zsh-syntax-highlighting · zsh-history-substring-search · eza · bat · fd · git-delta · tealdeer
+- JetBrainsMono Nerd Font 설치 (아이콘 깨짐 방지 — 터미널 앱 폰트는 직접 변경 필요)
 - claude·codex는 공식 네이티브 인스톨러로, gemini-cli·omc·omx는 npm으로 설치
 - `.zshrc`에 `cc`, `ccc`, `ccr`, zoxide, fzf, starship 설정 추가
 - SSH는 macOS 키체인이 자동 관리 (별도 설정 불필요)
 
 > Linux/macOS 모두 `install.sh` 한 줄로 OS를 자동 판별해 실행합니다.
+
+> 💡 **여러 번 실행해도 안전합니다 (멱등)** — 이미 설치된 도구·이미 적용된 설정은 자동으로 건너뜁니다. 설치가 중간에 끊겼거나 뭔가 꼬였다면 같은 명령을 그냥 다시 실행하세요. 직접 꾸며둔 `.zshrc`/`.bashrc`가 있어도 같은 기능은 중복 추가되지 않고 그대로 존중됩니다.
+
+---
+
+## 설치 확인
+
+새 터미널을 연 뒤 아래를 실행해 보세요. 버전이 출력되면 정상입니다:
+
+```bash
+claude --version    # Claude Code (cc 별칭으로 실행)
+codex --version     # Codex CLI
+starship --version  # 프롬프트
+zoxide --version    # z 명령
+fzf --version       # Ctrl+R 히스토리 검색
+```
+
+프롬프트나 `ll` 출력의 아이콘이 □ 로 깨져 보이면 터미널 폰트가 Nerd Font가 아닌 것입니다 → [Nerd Font 안내](#-jetbrainsmono-nerd-font) 참고.
 
 ---
 
@@ -112,6 +135,7 @@ curl -fsSL https://raw.githubusercontent.com/hd0126/dev-setup/main/install.sh | 
 | **zoxide** | `z <키워드>`로 방문 기록 기반 스마트 디렉토리 이동 |
 | **fzf** | `Ctrl+R` 히스토리 검색, `Ctrl+T` 파일 검색 |
 | **cc / ccc / ccr** | `cc`=`claude --dangerously-skip-permissions`, `ccc`=`cc --continue`, `ccr`=`cc --resume` (bypass permissions on) |
+| **자동제안** | PSReadLine `PredictionSource History` — 입력 중 회색 제안, `→`로 수락 (zsh-autosuggestions 대응) |
 | **SSH agent** | ssh-agent 서비스가 **이미 실행 중일 때만** `.ssh` 폴더의 키를 자동 등록(`ssh-add`). 에이전트를 직접 시작하거나 소켓을 관리하지는 않음 |
 | **프로필 로드 시간** | `PowerShell loaded in {N}ms` — 터미널 시작 시 회색으로 표시 |
 
@@ -132,6 +156,11 @@ Remove-Item $env:TEMP\pwsh_tools_cache.ps1
 | **zoxide** | `z <키워드>`로 스마트 디렉토리 이동 |
 | **fzf** | `Ctrl+R` 히스토리 검색, `Ctrl+T` 파일 검색 |
 | **cc / ccc / ccr** | `cc`=`claude --dangerously-skip-permissions`, `ccc`=`cc --continue`, `ccr`=`cc --resume` (bypass permissions on) |
+| **자동제안·색상** (zsh) | zsh-autosuggestions(회색 제안, `→`로 수락) + zsh-syntax-highlighting(유효=초록/오타=빨강) |
+| **ll / la / lt** | eza 기반 ls 대체 (긴 목록·전체·트리) |
+| **cat** | bat 문법 하이라이트 (Ubuntu `batcat` 자동 처리) |
+| **Ctrl+T 가속** | fzf 파일검색이 fd 기반으로 동작 (.gitignore 존중, Ubuntu `fdfind` 자동 처리) |
+| **git diff** | delta 하이라이트 (기존 pager 설정이 없을 때만 적용) |
 | **npm 전역 경로** | `~/.npm-global/bin`을 PATH에 추가 (sudo 없이 설치한 전역 CLI 실행) |
 | **셸 로드 시간** | `[shell] loaded in Xms` — 터미널 시작 시 표시 |
 
@@ -153,6 +182,11 @@ rm ~/.cache/starship_init_zsh.zsh   # zsh
 | **zoxide** | `z <키워드>`로 스마트 디렉토리 이동 |
 | **fzf** | `Ctrl+R` 히스토리 검색, `Ctrl+T` 파일 검색 |
 | **cc / ccc / ccr** | `cc`=`claude --dangerously-skip-permissions`, `ccc`=`cc --continue`, `ccr`=`cc --resume` (bypass permissions on) |
+| **자동제안·색상** | zsh-autosuggestions(회색 제안, `→`로 수락) + zsh-syntax-highlighting(유효=초록/오타=빨강) + history-substring-search(↑↓ 부분일치 검색) |
+| **ll / la / lt** | eza 기반 ls 대체 (아이콘·긴 목록·전체·트리) |
+| **cat** | bat 문법 하이라이트 |
+| **Ctrl+T 가속** | fzf 파일검색이 fd 기반으로 동작 (.gitignore 존중) |
+| **git diff** | delta 하이라이트 (기존 pager 설정이 없을 때만 적용) |
 | **Homebrew (Apple Silicon)** | `/opt/homebrew/bin/brew` 존재 시 `shellenv` 자동 적용 (node·npm 전역 CLI 포함) |
 | **셸 로드 시간** | `[shell] loaded in Xms` — 터미널 시작 시 표시 |
 | **SSH agent** | macOS 키체인이 자동 관리 — 별도 설정 불필요 |
@@ -166,7 +200,9 @@ rm ~/.cache/starship_init_zsh.zsh
 
 ## 이미 설치된 경우 (설정만 추가)
 
-AI CLI(claude, codex, gemini 등)가 이미 설치되어 있고 `cc`/zoxide/starship/셸 로드 타이머 등 설정 블록만 추가하고 싶다면, 전체 설치 스크립트 없이 아래 블록을 직접 붙여넣으면 됩니다.
+**가장 쉬운 방법은 [처음 설치](#처음-설치-신규)의 설치 명령을 그대로 다시 실행하는 것입니다** — 이미 설치된 도구는 건너뛰고 빠진 설정 블록만 추가되며, 직접 꾸며둔 설정과 중복되지 않습니다.
+
+스크립트 실행 없이 수동으로 붙여넣고 싶은 경우에만 아래 블록을 사용하세요.
 
 ### 🪟 Windows (PowerShell)
 
@@ -350,8 +386,11 @@ Get-Process | fzf | Stop-Process
 ---
 
 ### 🔤 JetBrainsMono Nerd Font
-Starship 프롬프트의 아이콘(Git 브랜치, 언어, 오류 등)이 깨지지 않으려면 Nerd Font가 필요합니다.
-선택 시 Windows Terminal 기본 폰트도 자동으로 설정됩니다.
+Starship 프롬프트·eza의 아이콘(Git 브랜치, 폴더 등)이 □ 로 깨지지 않으려면 Nerd Font가 필요합니다.
+
+- **Windows**: `install.ps1`에서 선택 설치 + Windows Terminal 기본 폰트 자동 설정
+- **macOS**: `setup-mac.sh`가 자동 설치. 설치 후 **터미널 앱 설정에서 폰트를 `JetBrainsMono Nerd Font`로 직접 변경**해야 적용됩니다 (Terminal.app / iTerm2 / Ghostty 공통)
+- **Linux**: 수동 설치 — [nerdfonts.com](https://www.nerdfonts.com/font-downloads)에서 JetBrainsMono 다운로드 → `~/.local/share/fonts`에 압축 해제 → `fc-cache -f` 실행 → 터미널 폰트 변경
 
 > VS Code 등 다른 앱은 설정에서 직접 `JetBrainsMono Nerd Font`로 변경해야 합니다.
 
@@ -375,6 +414,25 @@ rg -n "def "            # 줄 번호 표시
 rg -C 3 "catch"         # 검색 결과 앞뒤 3줄씩 같이 표시
 rg -l "TODO"            # 파일 이름만 출력 (내용 말고)
 ```
+
+---
+
+### ✨ 쾌적함 플러스 도구
+
+전부 셸 시작속도 영향이 거의 0인 가벼운 도구들입니다. **설치돼 있을 때만 활성화**되므로 일부가 없어도(구버전 Ubuntu 등) 에러 없이 그냥 건너뜁니다.
+
+| 도구 | 하는 일 | 써보기 |
+|------|---------|--------|
+| **zsh-autosuggestions** | 히스토리 기반 회색 자동제안 | 타이핑 중 `→` 키로 수락 |
+| **zsh-syntax-highlighting** | 명령이 유효하면 초록, 오타면 빨강 | 입력만 하면 자동 |
+| **zsh-history-substring-search** | 입력한 단어가 **포함된** 히스토리를 ↑↓로 탐색 (macOS) | `git` 입력 후 `↑` |
+| **eza** | `ls` 대체 — 아이콘·git 상태 표시 | `ll`, `la`, `lt`(트리) |
+| **bat** | `cat` 대체 — 문법 하이라이트·줄번호 | `cat 파일.py` |
+| **fd** | `find` 대체 — fzf `Ctrl+T`의 파일 소스로 자동 연동 | `fd 검색어` |
+| **git-delta** | `git diff`를 문법 하이라이트로 (pager 자동 설정) | `git diff` |
+| **tealdeer** | `man` 대신 실전 예시 위주 도움말 | `tldr tar` |
+
+> Ubuntu에서는 패키지 사정상 `bat`→`batcat`, `fd`→`fdfind` 명령명이지만 alias가 자동으로 처리합니다. Windows는 PSReadLine 내장 예측이 zsh-autosuggestions 역할을 대신합니다.
 
 ---
 
@@ -563,8 +621,12 @@ claude plugin install andrej-karpathy-skills@karpathy-skills
 | `z <키워드>` | 자주 간 디렉토리로 바로 이동 |
 | `zi` | fzf UI로 디렉토리 선택 후 이동 |
 | `Ctrl+R` | fzf로 히스토리 퍼지 검색 |
-| `Ctrl+T` | fzf로 파일 검색 후 경로 삽입 |
+| `Ctrl+T` | fzf로 파일 검색 후 경로 삽입 (fd 설치 시 .gitignore 존중) |
 | `↑ / ↓` | 히스토리 검색 (입력한 내용 기준) |
+| `→` | 회색 자동제안 수락 (zsh-autosuggestions / PSReadLine) |
+| `ll` / `la` / `lt` | eza 긴 목록 / 숨김 포함 / 트리 |
+| `cat <파일>` | bat 문법 하이라이트로 표시 |
+| `tldr <명령>` | 실전 예시 위주 명령어 도움말 |
 | `conda` | Conda 초기화 (첫 호출 시 로드) |
 
 ---

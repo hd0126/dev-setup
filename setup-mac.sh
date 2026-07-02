@@ -44,6 +44,28 @@ install_brew starship
 install_brew python@3.12
 install_brew uv
 
+# 쾌적함 플러스 (전부 시작속도 영향 미미 또는 0)
+install_brew zsh-autosuggestions        # 히스토리 기반 회색 자동제안
+install_brew zsh-syntax-highlighting    # 입력 중 명령 유효/오타 색상
+install_brew zsh-history-substring-search # ↑↓ 부분일치 히스토리 검색
+install_brew eza                        # ls 대체 (아이콘·git 상태)
+install_brew bat                        # cat 대체 (문법 하이라이트)
+install_brew fd                         # find 대체 (fzf Ctrl+T 가속)
+install_brew git-delta                  # git diff 하이라이트
+install_brew tealdeer                   # tldr — 예시 위주 명령어 도움말
+
+# ── 2b. Nerd Font (Starship·eza 아이콘용) ─────────────────
+if brew list --cask font-jetbrains-mono-nerd-font &>/dev/null; then
+    ok "JetBrainsMono Nerd Font (already installed)"
+else
+    info "Installing JetBrainsMono Nerd Font..."
+    if brew install --cask font-jetbrains-mono-nerd-font; then
+        ok "JetBrainsMono Nerd Font — 터미널 앱 설정에서 폰트를 'JetBrainsMono Nerd Font'로 변경하세요"
+    else
+        fail "JetBrainsMono Nerd Font"
+    fi
+fi
+
 # ── 3. Node.js LTS (Homebrew) ─────────────────────────────
 if ! command -v node &>/dev/null; then
     install_brew node
@@ -99,6 +121,22 @@ if command -v npm &>/dev/null; then
     install_npm "oh-my-codex"
 else
     warn "npm not found — skipping gemini-cli/omc/omx. Install Node.js first, then re-run."
+fi
+
+# ── 5b. git-delta를 git pager로 (기존 설정 있으면 건드리지 않음) ──
+if command -v delta &>/dev/null; then
+    if git config --global core.pager &>/dev/null; then
+        ok "git pager (기존 설정 유지)"
+    else
+        git config --global core.pager delta
+        git config --global interactive.diffFilter "delta --color-only"
+        ok "git-delta → git diff 하이라이트 적용"
+    fi
+fi
+
+# ── 5c. tealdeer 캐시 초기화 (첫 tldr 실행 대비) ──────────
+if command -v tldr &>/dev/null && [ ! -d "${HOME}/Library/Caches/tealdeer" ]; then
+    tldr --update &>/dev/null || warn "tldr 캐시 다운로드 실패 — 나중에 'tldr --update' 실행"
 fi
 
 # ── 6. Shell config (.zshrc) ─────────────────────────────
@@ -177,6 +215,41 @@ fi
 EOF
 append_zshrc 'starship init' "Starship prompt" "$BLOCK"
 
+IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── zsh-autosuggestions (히스토리 기반 회색 자동제안, →로 수락) ──
+if [ -f "${HOMEBREW_PREFIX:-/opt/homebrew}/share/zsh-autosuggestions/zsh-autosuggestions.zsh" ]; then
+    source "${HOMEBREW_PREFIX:-/opt/homebrew}/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
+fi
+EOF
+append_zshrc 'zsh-autosuggestions' "zsh-autosuggestions" "$BLOCK"
+
+IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── eza (ls 대체: 아이콘·git 상태 — Nerd Font 필요) ───────
+if command -v eza &>/dev/null; then
+    alias ll='eza -l --icons'
+    alias la='eza -la --icons'
+    alias lt='eza --tree --icons'
+fi
+EOF
+append_zshrc 'alias ll=' "eza aliases (ll/la/lt)" "$BLOCK"
+
+IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── bat (cat 대체: 문법 하이라이트·줄번호) ─────────────────
+if command -v bat &>/dev/null; then
+    alias cat='bat --paging=never'
+fi
+EOF
+append_zshrc 'alias cat=' "bat alias (cat)" "$BLOCK"
+
+IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── fd + fzf 연동 (Ctrl+T 파일검색 가속, .gitignore 존중) ──
+if command -v fd &>/dev/null; then
+    export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
+    export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+fi
+EOF
+append_zshrc 'FZF_DEFAULT_COMMAND' "fd + fzf integration" "$BLOCK"
+
 # ~/.local/bin은 uv/claude/codex 네이티브 인스톨러가 .zshenv/.zprofile에 넣기도
 # 하므로 .zshrc만이 아니라 셋 다 확인 — 어디든 있으면 이미 설정된 것
 if grep -qE '\.local/bin' "$ZSHRC" "$HOME/.zshenv" "$HOME/.zprofile" 2>/dev/null; then
@@ -202,6 +275,26 @@ else
 EOF
     append_zshrc 'brew shellenv' "Homebrew shellenv" "$BLOCK"
 fi
+
+# syntax-highlighting은 모든 위젯 로드 후 마지막에 source해야 하고,
+# history-substring-search는 그보다도 뒤여야 함 (플러그인 공식 권장 순서)
+IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── zsh-syntax-highlighting (명령 유효/오타 색상 — 반드시 끝부분) ──
+if [ -f "${HOMEBREW_PREFIX:-/opt/homebrew}/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ]; then
+    source "${HOMEBREW_PREFIX:-/opt/homebrew}/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+fi
+EOF
+append_zshrc 'zsh-syntax-highlighting' "zsh-syntax-highlighting" "$BLOCK"
+
+IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── zsh-history-substring-search (↑↓ 부분일치 검색) ───────
+if [ -f "${HOMEBREW_PREFIX:-/opt/homebrew}/share/zsh-history-substring-search/zsh-history-substring-search.zsh" ]; then
+    source "${HOMEBREW_PREFIX:-/opt/homebrew}/share/zsh-history-substring-search/zsh-history-substring-search.zsh"
+    bindkey '^[[A' history-substring-search-up
+    bindkey '^[[B' history-substring-search-down
+fi
+EOF
+append_zshrc 'history-substring-search' "zsh-history-substring-search" "$BLOCK"
 
 if [ "$HAND_CONFIGURED" = 0 ]; then
     IFS= read -r -d '' BLOCK <<'EOF' || true

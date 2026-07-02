@@ -33,6 +33,26 @@ install_apt fzf
 install_apt python3
 install_apt python3-pip
 
+# 배포판 버전에 따라 apt에 없을 수 있는 패키지 — 없으면 경고만 하고 계속
+install_apt_opt() {
+    if dpkg -s "$1" &>/dev/null; then
+        ok "$1 (already installed)"
+    elif sudo apt-get install -y -q "$1" &>/dev/null; then
+        ok "$1"
+    else
+        warn "$1 — apt 저장소에 없음(구버전 배포판), 건너뜀"
+    fi
+}
+
+# 쾌적함 플러스 (전부 시작속도 영향 미미 또는 0)
+install_apt_opt zsh-autosuggestions     # 히스토리 기반 회색 자동제안 (zsh)
+install_apt_opt zsh-syntax-highlighting # 입력 중 명령 유효/오타 색상 (zsh)
+install_apt_opt eza                     # ls 대체 (Ubuntu 24.04+)
+install_apt_opt bat                     # cat 대체 — Ubuntu에선 batcat 명령
+install_apt_opt fd-find                 # find 대체 — Ubuntu에선 fdfind 명령
+install_apt_opt git-delta               # git diff 하이라이트
+install_apt_opt tealdeer                # tldr — 예시 위주 명령어 도움말
+
 # ── 2. GitHub CLI ─────────────────────────────────────────
 if ! command -v gh &>/dev/null; then
     info "Installing GitHub CLI..."
@@ -135,6 +155,22 @@ else
     warn "npm not found — skipping gemini-cli/omc/omx. Install Node.js first, then re-run."
 fi
 
+# ── 7b. git-delta를 git pager로 (기존 설정 있으면 건드리지 않음) ──
+if command -v delta &>/dev/null; then
+    if git config --global core.pager &>/dev/null; then
+        ok "git pager (기존 설정 유지)"
+    else
+        git config --global core.pager delta
+        git config --global interactive.diffFilter "delta --color-only"
+        ok "git-delta → git diff 하이라이트 적용"
+    fi
+fi
+
+# ── 7c. tealdeer 캐시 초기화 (첫 tldr 실행 대비) ──────────
+if command -v tldr &>/dev/null && [ ! -d "${XDG_CACHE_HOME:-$HOME/.cache}/tealdeer" ]; then
+    tldr --update &>/dev/null || warn "tldr 캐시 다운로드 실패 — 나중에 'tldr --update' 실행"
+fi
+
 # ── 8. Shell config (.bashrc / .zshrc) ───────────────────
 SHELL_CONFIGS=()
 [ -f "$HOME/.bashrc" ] && SHELL_CONFIGS+=("$HOME/.bashrc")
@@ -216,6 +252,42 @@ fi
 EOF
         append_cfg "$cfg" 'starship init' "Starship prompt" "$BLOCK"
         IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── zsh-autosuggestions (히스토리 기반 회색 자동제안, →로 수락) ──
+if [ -f /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh ]; then
+    source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh
+fi
+EOF
+        append_cfg "$cfg" 'zsh-autosuggestions' "zsh-autosuggestions" "$BLOCK"
+        IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── eza (ls 대체 — Nerd Font 설치 시 --icons 옵션 추가 가능) ──
+if command -v eza &>/dev/null; then
+    alias ll='eza -l'
+    alias la='eza -la'
+    alias lt='eza --tree'
+fi
+EOF
+        append_cfg "$cfg" 'alias ll=' "eza aliases (ll/la/lt)" "$BLOCK"
+        IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── bat (cat 대체: 문법 하이라이트) — Ubuntu는 batcat ─────
+if command -v bat &>/dev/null; then
+    alias cat='bat --paging=never'
+elif command -v batcat &>/dev/null; then
+    alias cat='batcat --paging=never'
+fi
+EOF
+        append_cfg "$cfg" 'alias cat=' "bat alias (cat)" "$BLOCK"
+        IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── fd + fzf 연동 (Ctrl+T 파일검색 가속) — Ubuntu는 fdfind ──
+if command -v fd &>/dev/null; then
+    export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
+    export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+elif command -v fdfind &>/dev/null; then
+    export FZF_DEFAULT_COMMAND='fdfind --type f --hidden --follow --exclude .git'
+    export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+fi
+EOF
+        append_cfg "$cfg" 'FZF_DEFAULT_COMMAND' "fd + fzf integration" "$BLOCK"
+        IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── npm global bin (no-sudo prefix) ──────────────────────
 case ":$PATH:" in *":$HOME/.npm-global/bin:"*) ;; *) export PATH="$HOME/.npm-global/bin:$PATH" ;; esac
 EOF
@@ -225,6 +297,14 @@ EOF
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
 EOF
         append_cfg "$cfg" '\.local/bin' "~/.local/bin PATH (uv, native installers)" "$BLOCK"
+        # syntax-highlighting은 모든 위젯 로드 후 마지막에 source (플러그인 공식 권장)
+        IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── zsh-syntax-highlighting (명령 유효/오타 색상 — 반드시 끝부분) ──
+if [ -f /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]; then
+    source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+fi
+EOF
+        append_cfg "$cfg" 'zsh-syntax-highlighting' "zsh-syntax-highlighting" "$BLOCK"
         if [ "$hand_configured" = 0 ]; then
             IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── Startup time ──────────────────────────────────────────
@@ -278,6 +358,35 @@ if command -v starship &>/dev/null; then
 fi
 EOF
         append_cfg "$cfg" 'starship init' "Starship prompt" "$BLOCK"
+        IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── eza (ls 대체 — Nerd Font 설치 시 --icons 옵션 추가 가능) ──
+if command -v eza &>/dev/null; then
+    alias ll='eza -l'
+    alias la='eza -la'
+    alias lt='eza --tree'
+fi
+EOF
+        append_cfg "$cfg" 'alias ll=' "eza aliases (ll/la/lt)" "$BLOCK"
+        IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── bat (cat 대체: 문법 하이라이트) — Ubuntu는 batcat ─────
+if command -v bat &>/dev/null; then
+    alias cat='bat --paging=never'
+elif command -v batcat &>/dev/null; then
+    alias cat='batcat --paging=never'
+fi
+EOF
+        append_cfg "$cfg" 'alias cat=' "bat alias (cat)" "$BLOCK"
+        IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── fd + fzf 연동 (Ctrl+T 파일검색 가속) — Ubuntu는 fdfind ──
+if command -v fd &>/dev/null; then
+    export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
+    export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+elif command -v fdfind &>/dev/null; then
+    export FZF_DEFAULT_COMMAND='fdfind --type f --hidden --follow --exclude .git'
+    export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+fi
+EOF
+        append_cfg "$cfg" 'FZF_DEFAULT_COMMAND' "fd + fzf integration" "$BLOCK"
         IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── npm global bin (no-sudo prefix) ──────────────────────
 case ":$PATH:" in *":$HOME/.npm-global/bin:"*) ;; *) export PATH="$HOME/.npm-global/bin:$PATH" ;; esac
