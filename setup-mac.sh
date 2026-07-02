@@ -77,7 +77,9 @@ fi
 install_npm() {
     local pkg="$1"
     local installed latest
-    installed=$(npm list -g --depth=0 2>/dev/null | grep -F "$pkg@" | grep -oP '\d+\.\d+\.\d+\S*' | head -1)
+    # grep -E only: macOS BSD grep has no -P (PCRE), which made this always
+    # come back empty and reinstall every package on every run
+    installed=$(npm list -g --depth=0 2>/dev/null | grep -F "$pkg@" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+[^ ]*' | head -1)
     latest=$(npm view "$pkg" version 2>/dev/null)
     if [ -z "$installed" ]; then
         info "Installing $pkg..."
