@@ -84,8 +84,9 @@ H="$T/linF"; mkdir -p "$H/.local/bin"; touch "$H/.bashrc" "$H/.zshrc"
 printf '#!/bin/sh\nif [ "$1" = "init" ]; then echo "z() { echo zoxide-works; }"; fi\n' > "$H/.local/bin/zoxide"
 chmod +x "$H/.local/bin/zoxide"
 run_linux "$H"
+# 완전일치가 아니라 포함 검사: rc의 시작타이머가 stdout에 한 줄 찍히는 게 정상
 out=$(HOME="$H" PATH="/usr/bin:/bin" "$BASH_BIN" -c 'source "$HOME/.bashrc" 2>/dev/null; type z >/dev/null 2>&1 && z || echo MISSING')
-if [ "$out" = "zoxide-works" ]; then pass "z 정의됨 (PATH 순서 수정 확인)"; else fail "z 미정의: $out"; fi
+if printf '%s' "$out" | grep -q 'zoxide-works'; then pass "z 정의됨 (PATH 순서 수정 확인)"; else fail "z 미정의: $out"; fi
 
 echo "== [linux] G. 배포판 스톡 alias ll이 있어도 eza 블록 추가 =="
 H="$T/linG"; mkdir -p "$H"; printf "alias ll='ls -alF'\nalias la='ls -A'\n" > "$H/.bashrc"; touch "$H/.zshrc"
