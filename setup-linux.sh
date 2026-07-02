@@ -137,69 +137,64 @@ if [[ "$SHELL" == */zsh ]] && [[ ! -f "$HOME/.zshrc" ]]; then
 fi
 [ ${#SHELL_CONFIGS[@]} -eq 0 ] && SHELL_CONFIGS+=("$HOME/.bashrc") # fallback
 
-SNIPPET=$(cat <<'SHELLSNIPPET'
-# ── Shell startup timer ───────────────────────────────────
-_shell_start=$(date +%s%3N)
-
-# ── Claude Code shortcuts ──────────────────────────────────
-alias cc='claude --dangerously-skip-permissions'
-alias ccc='cc --continue'
-alias ccr='cc --resume'
-
-# ── zoxide ────────────────────────────────────────────────
-if command -v zoxide &>/dev/null; then
-    eval "$(zoxide init bash --cmd z)"
-fi
-
-# ── fzf ───────────────────────────────────────────────────
-if command -v fzf &>/dev/null; then
-    eval "$(fzf --bash 2>/dev/null || true)"
-fi
-
-# ── Starship prompt (cached) ──────────────────────────────
-if command -v starship &>/dev/null; then
-    _starship_cache="${XDG_CACHE_HOME:-$HOME/.cache}/starship_init_bash.sh"
-    if [ ! -f "$_starship_cache" ]; then
-        mkdir -p "$(dirname "$_starship_cache")"
-        starship init bash > "$_starship_cache"
+# Re-run safe, per-feature: append each block only when its feature isn't
+# already in the config file (signature grep). The old all-or-nothing marker
+# check re-appended the WHOLE snippet on machines whose rc file was configured
+# by hand (no marker) — duplicating aliases and inits. Hand-written
+# equivalents (e.g. plain `eval "$(starship init zsh)"`) count as configured
+# and are left untouched.
+append_cfg() {
+    local cfg="$1" signature="$2" label="$3" block="$4"
+    if grep -qE "$signature" "$cfg" 2>/dev/null; then
+        ok "$label (already in $cfg)"
+    else
+        printf '\n%s\n' "$block" >> "$cfg"
+        ok "$label → $cfg"
     fi
-    source "$_starship_cache"
-fi
+}
 
-# ── npm global bin (no-sudo prefix) ──────────────────────
-export PATH="$HOME/.npm-global/bin:$PATH"
+for cfg in "${SHELL_CONFIGS[@]}"; do
+    # Startup timer must PRECEDE the feature blocks it measures, so it only
+    # makes sense when they're appended fresh in the same run. On a config
+    # that already has any of them (hand-configured), skip it — appended at
+    # the end it would just print a meaningless "loaded in 0ms" every shell.
+    hand_configured=0
+    if grep -qE 'alias cc=|zoxide init|fzf --(zsh|bash)|starship init' "$cfg" 2>/dev/null; then
+        hand_configured=1
+    fi
 
-# ── uv (~/.local/bin) ─────────────────────────────────────
-export PATH="$HOME/.local/bin:$PATH"
+    if [[ "$cfg" == *".zshrc" ]]; then
 
-# ── Startup time ──────────────────────────────────────────
-if [ -n "$_shell_start" ]; then
-    printf '\033[0;36m[shell] loaded in %dms\033[0m\n' "$(( $(date +%s%3N) - _shell_start ))"
-    unset _shell_start
-fi
-SHELLSNIPPET
-)
-
-ZSH_SNIPPET=$(cat <<'ZSHSNIPPET'
+        if [ "$hand_configured" = 0 ]; then
+            IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── Shell startup timer ───────────────────────────────────
 zmodload zsh/datetime
 _shell_start=$EPOCHREALTIME
-
+EOF
+            append_cfg "$cfg" '_shell_start=\$EPOCHREALTIME' "startup timer" "$BLOCK"
+        fi
+        IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── Claude Code shortcuts ──────────────────────────────────
 alias cc='claude --dangerously-skip-permissions'
 alias ccc='cc --continue'
 alias ccr='cc --resume'
-
+EOF
+        append_cfg "$cfg" 'alias cc=' "Claude Code shortcuts (cc/ccc/ccr)" "$BLOCK"
+        IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── zoxide ────────────────────────────────────────────────
 if command -v zoxide &>/dev/null; then
     eval "$(zoxide init zsh --cmd z)"
 fi
-
+EOF
+        append_cfg "$cfg" 'zoxide init' "zoxide" "$BLOCK"
+        IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── fzf ───────────────────────────────────────────────────
 if command -v fzf &>/dev/null; then
     source <(fzf --zsh 2>/dev/null || true)
 fi
-
+EOF
+        append_cfg "$cfg" 'fzf --zsh' "fzf" "$BLOCK"
+        IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── Starship prompt (cached) ──────────────────────────────
 if command -v starship &>/dev/null; then
     _starship_cache="${XDG_CACHE_HOME:-$HOME/.cache}/starship_init_zsh.zsh"
@@ -209,33 +204,92 @@ if command -v starship &>/dev/null; then
     fi
     source "$_starship_cache"
 fi
-
+EOF
+        append_cfg "$cfg" 'starship init' "Starship prompt" "$BLOCK"
+        IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── npm global bin (no-sudo prefix) ──────────────────────
-export PATH="$HOME/.npm-global/bin:$PATH"
-
-# ── uv (~/.local/bin) ─────────────────────────────────────
-export PATH="$HOME/.local/bin:$PATH"
-
+case ":$PATH:" in *":$HOME/.npm-global/bin:"*) ;; *) export PATH="$HOME/.npm-global/bin:$PATH" ;; esac
+EOF
+        append_cfg "$cfg" '\.npm-global' "npm global bin PATH" "$BLOCK"
+        IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── uv / native installers (~/.local/bin) ────────────────
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
+EOF
+        append_cfg "$cfg" '\.local/bin' "~/.local/bin PATH (uv, native installers)" "$BLOCK"
+        if [ "$hand_configured" = 0 ]; then
+            IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── Startup time ──────────────────────────────────────────
 if [ -n "$_shell_start" ]; then
     printf '\033[0;36m[shell] loaded in %.0fms\033[0m\n' "$(( (EPOCHREALTIME - _shell_start) * 1000 ))"
     unset _shell_start
 fi
-ZSHSNIPPET
-)
-
-MARKER="# ── Claude Code shortcuts ──────────────────────────────────"
-
-for cfg in "${SHELL_CONFIGS[@]}"; do
-    if grep -q "$MARKER" "$cfg" 2>/dev/null; then
-        warn "$cfg — already configured, skipping"
-    else
-        if [[ "$cfg" == *".zshrc" ]]; then
-            echo "$ZSH_SNIPPET" >> "$cfg"
-        else
-            echo "$SNIPPET" >> "$cfg"
+EOF
+            append_cfg "$cfg" '\[shell\] loaded' "startup time report" "$BLOCK"
         fi
-        ok "$cfg updated"
+
+    else
+
+        if [ "$hand_configured" = 0 ]; then
+            IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── Shell startup timer ───────────────────────────────────
+_shell_start=$(date +%s%3N)
+EOF
+            append_cfg "$cfg" '_shell_start=\$\(date' "startup timer" "$BLOCK"
+        fi
+        IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── Claude Code shortcuts ──────────────────────────────────
+alias cc='claude --dangerously-skip-permissions'
+alias ccc='cc --continue'
+alias ccr='cc --resume'
+EOF
+        append_cfg "$cfg" 'alias cc=' "Claude Code shortcuts (cc/ccc/ccr)" "$BLOCK"
+        IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── zoxide ────────────────────────────────────────────────
+if command -v zoxide &>/dev/null; then
+    eval "$(zoxide init bash --cmd z)"
+fi
+EOF
+        append_cfg "$cfg" 'zoxide init' "zoxide" "$BLOCK"
+        IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── fzf ───────────────────────────────────────────────────
+if command -v fzf &>/dev/null; then
+    eval "$(fzf --bash 2>/dev/null || true)"
+fi
+EOF
+        append_cfg "$cfg" 'fzf --bash' "fzf" "$BLOCK"
+        IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── Starship prompt (cached) ──────────────────────────────
+if command -v starship &>/dev/null; then
+    _starship_cache="${XDG_CACHE_HOME:-$HOME/.cache}/starship_init_bash.sh"
+    if [ ! -f "$_starship_cache" ]; then
+        mkdir -p "$(dirname "$_starship_cache")"
+        starship init bash > "$_starship_cache"
+    fi
+    source "$_starship_cache"
+fi
+EOF
+        append_cfg "$cfg" 'starship init' "Starship prompt" "$BLOCK"
+        IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── npm global bin (no-sudo prefix) ──────────────────────
+case ":$PATH:" in *":$HOME/.npm-global/bin:"*) ;; *) export PATH="$HOME/.npm-global/bin:$PATH" ;; esac
+EOF
+        append_cfg "$cfg" '\.npm-global' "npm global bin PATH" "$BLOCK"
+        IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── uv / native installers (~/.local/bin) ────────────────
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
+EOF
+        append_cfg "$cfg" '\.local/bin' "~/.local/bin PATH (uv, native installers)" "$BLOCK"
+        if [ "$hand_configured" = 0 ]; then
+            IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── Startup time ──────────────────────────────────────────
+if [ -n "$_shell_start" ]; then
+    printf '\033[0;36m[shell] loaded in %dms\033[0m\n' "$(( $(date +%s%3N) - _shell_start ))"
+    unset _shell_start
+fi
+EOF
+            append_cfg "$cfg" '\[shell\] loaded' "startup time report" "$BLOCK"
+        fi
+
     fi
 done
 

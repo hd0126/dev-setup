@@ -97,31 +97,65 @@ fi
 ZSHRC="$HOME/.zshrc"
 [ -f "$ZSHRC" ] || touch "$ZSHRC"
 
-MARKER="# ── Claude Code shortcuts ──────────────────────────────────"
+# Re-run safe, per-feature: append each block only when its feature isn't
+# already in .zshrc (signature grep). The old all-or-nothing marker check
+# re-appended the WHOLE snippet on machines whose .zshrc was configured by
+# hand (no marker) — duplicating aliases and inits. Hand-written equivalents
+# (e.g. plain `eval "$(starship init zsh)"`) count as configured and are
+# left untouched.
+append_zshrc() {
+    local signature="$1" label="$2" block="$3"
+    if grep -qE "$signature" "$ZSHRC" 2>/dev/null; then
+        ok "$label (already in .zshrc)"
+    else
+        printf '\n%s\n' "$block" >> "$ZSHRC"
+        ok "$label → .zshrc"
+    fi
+}
 
-if grep -q "$MARKER" "$ZSHRC" 2>/dev/null; then
-    warn "$ZSHRC — already configured, skipping"
-else
-    cat >> "$ZSHRC" <<'ZSHSNIPPET'
+# Startup timer must PRECEDE the feature blocks it measures, so it only makes
+# sense when they're appended fresh in the same run. On a .zshrc that already
+# has any of them (hand-configured), skip it — appended at the end it would
+# just print a meaningless "loaded in 0ms" every shell.
+HAND_CONFIGURED=0
+if grep -qE 'alias cc=|zoxide init|fzf --zsh|starship init' "$ZSHRC" 2>/dev/null; then
+    HAND_CONFIGURED=1
+fi
+
+if [ "$HAND_CONFIGURED" = 0 ]; then
+    IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── Shell startup timer ───────────────────────────────────
 zmodload zsh/datetime
 _shell_start=$EPOCHREALTIME
+EOF
+    append_zshrc '_shell_start=\$EPOCHREALTIME' "startup timer" "$BLOCK"
+fi
 
+IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── Claude Code shortcuts ──────────────────────────────────
 alias cc='claude --dangerously-skip-permissions'
 alias ccc='cc --continue'
 alias ccr='cc --resume'
+EOF
+append_zshrc 'alias cc=' "Claude Code shortcuts (cc/ccc/ccr)" "$BLOCK"
 
+IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── zoxide ────────────────────────────────────────────────
 if command -v zoxide &>/dev/null; then
     eval "$(zoxide init zsh --cmd z)"
 fi
+EOF
+append_zshrc 'zoxide init' "zoxide" "$BLOCK"
 
+IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── fzf ───────────────────────────────────────────────────
 if command -v fzf &>/dev/null; then
     source <(fzf --zsh 2>/dev/null || true)
 fi
+EOF
+append_zshrc 'fzf --zsh' "fzf" "$BLOCK"
 
+IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── Starship prompt (cached) ──────────────────────────────
 if command -v starship &>/dev/null; then
     _starship_cache="${XDG_CACHE_HOME:-$HOME/.cache}/starship_init_zsh.zsh"
@@ -131,22 +165,44 @@ if command -v starship &>/dev/null; then
     fi
     source "$_starship_cache"
 fi
+EOF
+append_zshrc 'starship init' "Starship prompt" "$BLOCK"
 
+# ~/.local/bin은 uv/claude/codex 네이티브 인스톨러가 .zshenv/.zprofile에 넣기도
+# 하므로 .zshrc만이 아니라 셋 다 확인 — 어디든 있으면 이미 설정된 것
+if grep -qE '\.local/bin' "$ZSHRC" "$HOME/.zshenv" "$HOME/.zprofile" 2>/dev/null; then
+    ok "~/.local/bin PATH (already configured)"
+else
+    IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── Local bin (native installers: claude, codex) ─────────
 # Idempotent: the native installers may already add this line, so only prepend
-# when it isn't on PATH yet — avoids a duplicate ~/.local/bin entry.
+# when it is not on PATH yet — avoids a duplicate ~/.local/bin entry.
+# (no apostrophes in this block: macOS bash 3.2 miscounts quotes in $(<<EOF))
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
+EOF
+    append_zshrc '\.local/bin' "~/.local/bin PATH" "$BLOCK"
+fi
 
+# brew shellenv는 Homebrew 설치기가 .zprofile에 넣는 것이 표준 위치 — 거기 있으면 skip
+if grep -qE 'brew shellenv' "$ZSHRC" "$HOME/.zprofile" 2>/dev/null; then
+    ok "Homebrew shellenv (already configured)"
+else
+    IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── Homebrew (Apple Silicon) ──────────────────────────────
 [ -f "/opt/homebrew/bin/brew" ] && eval "$(/opt/homebrew/bin/brew shellenv)"
+EOF
+    append_zshrc 'brew shellenv' "Homebrew shellenv" "$BLOCK"
+fi
 
+if [ "$HAND_CONFIGURED" = 0 ]; then
+    IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── Startup time ──────────────────────────────────────────
 if [ -n "$_shell_start" ]; then
     printf '\033[0;36m[shell] loaded in %.0fms\033[0m\n' "$(( (EPOCHREALTIME - _shell_start) * 1000 ))"
     unset _shell_start
 fi
-ZSHSNIPPET
-    ok "$ZSHRC updated"
+EOF
+    append_zshrc '\[shell\] loaded' "startup time report" "$BLOCK"
 fi
 
 # ── 7. SSH agent ──────────────────────────────────────────
