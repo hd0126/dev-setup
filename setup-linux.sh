@@ -556,6 +556,26 @@ $(printf -- '- %s\n' "${FAILED[@]}")
     fi
 fi
 
+# ── Star (optional) ───────────────────────────────────────
+# 전부 성공했을 때만 제안. 이미 star했으면 조용히 스킵, 미로그인이면 링크만.
+if [ ${#FAILED[@]} -eq 0 ]; then
+    if command -v gh &>/dev/null && gh auth status &>/dev/null; then
+        if ! gh api user/starred/hd0126/dev-setup --silent 2>/dev/null; then
+            echo ""
+            printf "이 스크립트가 도움이 됐다면 ⭐ star로 응원해주세요! 지금 누를까요? [y/N] "
+            read -r ans </dev/tty 2>/dev/null || ans=""
+            case "$ans" in
+                y|Y|yes) gh api -X PUT user/starred/hd0126/dev-setup --silent 2>/dev/null \
+                           && ok "Star 감사합니다! ⭐" \
+                           || warn "star 실패 — https://github.com/hd0126/dev-setup 에서 직접 눌러주세요." ;;
+            esac
+        fi
+    else
+        echo ""
+        echo -e "${CYAN}도움이 됐다면 ⭐: https://github.com/hd0126/dev-setup${NC}"
+    fi
+fi
+
 # ── Done ──────────────────────────────────────────────────
 ELAPSED=$((SECONDS - START_TIME))
 echo ""
