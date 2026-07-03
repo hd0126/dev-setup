@@ -15,12 +15,27 @@ fail() { echo -e "${RED}[FAIL]${NC} $1"; FAILED+=("$1"); }
 # ── 1. Homebrew ───────────────────────────────────────────
 if ! command -v brew &>/dev/null; then
     info "Installing Homebrew..."
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    # Apple Silicon PATH 설정
+    # 다운로드 후 실행: `bash -c "$(curl ...)"`는 명령 치환이라 pipefail 대상이 아니고,
+    # curl -f 실패 시 빈 문자열이 bash 로 넘어가 조용히 exit 0 → "설치됨" 오보고된다.
+    _brew_installer="$(mktemp)"
+    if curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh -o "$_brew_installer"; then
+        /bin/bash "$_brew_installer" || true
+    else
+        warn "Homebrew 설치 스크립트 다운로드 실패 — 네트워크를 확인하세요."
+    fi
+    rm -f "$_brew_installer"
+    # Apple Silicon / Intel PATH 설정
     if [ -f "/opt/homebrew/bin/brew" ]; then
         eval "$(/opt/homebrew/bin/brew shellenv)"
+    elif [ -x /usr/local/bin/brew ]; then
+        eval "$(/usr/local/bin/brew shellenv)"
     fi
-    ok "Homebrew"
+    # 설치 성공을 실제로 검증 — 다운로드/실행 실패를 성공으로 보고하지 않도록.
+    if command -v brew &>/dev/null; then
+        ok "Homebrew"
+    else
+        fail "Homebrew (설치 실패 — 위 로그 확인)"
+    fi
 else
     ok "Homebrew (already installed)"
 fi

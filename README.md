@@ -455,7 +455,7 @@ rg -l "TODO"            # 파일 이름만 출력 (내용 말고)
 |------|---------|--------|
 | **zsh-autosuggestions** | 히스토리 기반 회색 자동제안 | 타이핑 중 `→` 키로 수락 |
 | **zsh-syntax-highlighting** | 명령이 유효하면 초록, 오타면 빨강 | 입력만 하면 자동 |
-| **zsh-history-substring-search** | 입력한 단어가 **포함된** 히스토리를 ↑↓로 탐색 (macOS) | `git` 입력 후 `↑` |
+| **zsh-history-substring-search** | 입력한 단어가 **포함된** 히스토리를 ↑↓로 탐색 (macOS · Linux) | `git` 입력 후 `↑` |
 | **eza** | `ls` 대체 — 아이콘·git 상태 표시 | `ll`, `la`, `lt`(트리) |
 | **bat** | `cat` 대체 — 문법 하이라이트·줄번호 | `cat 파일.py` |
 | **fd** | `find` 대체 — fzf `Ctrl+T`의 파일 소스로 자동 연동 | `fd 검색어` (Ubuntu는 `fdfind 검색어`) |
@@ -667,7 +667,7 @@ claude plugin install andrej-karpathy-skills@karpathy-skills
 | `zi` | fzf UI로 디렉토리 선택 후 이동 |
 | `Ctrl+R` | fzf로 히스토리 퍼지 검색 |
 | `Ctrl+T` | fzf로 파일 검색 후 경로 삽입 (fd 설치 시 .gitignore 존중) |
-| `↑ / ↓` | 입력한 내용 기준 히스토리 검색 (Windows=PSReadLine · macOS=substring-search 플러그인 · Linux는 기본 히스토리 이동) |
+| `↑ / ↓` | 입력한 내용 기준 히스토리 검색 (Windows=PSReadLine · macOS·Linux=substring-search 플러그인) |
 | `→` | 회색 자동제안 수락 (zsh-autosuggestions / PSReadLine) |
 | `ll` / `la` / `lt` | eza 긴 목록 / 숨김 포함 / 트리 |
 | `cat <파일>` | bat 문법 하이라이트로 표시 |

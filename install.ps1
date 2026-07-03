@@ -619,7 +619,11 @@ if ($fontPkg -and $fontPkg.On -and -not $DryRun) {
         if ($wtSeen[$full]) { continue }
         $wtSeen[$full] = $true
         try {
-            $cfg = Get-Content $p -Raw | ConvertFrom-Json -ErrorAction Stop
+            # WinPS 5.1 의 ConvertFrom-Json 은 // 주석이 있는 JSON 에서 예외를 던진다(PS7 은 관대).
+            # Windows Terminal 기본 settings.json 은 // 줄 주석을 포함하므로, 파싱 전에 줄 시작
+            # 주석만 제거한다 ("https://" 같은 값 내부의 // 는 줄 시작이 아니라 영향 없음).
+            $jsonLines = @(Get-Content $p) -notmatch '^\s*//'
+            $cfg = ($jsonLines -join "`n") | ConvertFrom-Json -ErrorAction Stop
             if (-not $cfg.profiles) { continue }
             Copy-Item $p "$p.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')" -Force
             if (-not $cfg.profiles.defaults) {
@@ -672,6 +676,25 @@ if ($DryRun) {
     Write-Host "[DRY-RUN] Plan validated - nothing was installed." -ForegroundColor Green
 } elseif ($failedPkgs.Count -eq 0) {
     Write-Host "All required packages installed successfully." -ForegroundColor Green
+    # 전부 성공했을 때만 star 제안 (mac/linux 와 동등). 로그인+미star 일 때만 묻는다.
+    $ghStar = Get-Command gh -ErrorAction SilentlyContinue
+    if ($ghStar -and -not $NonInteractive) {
+        & $ghStar.Source auth status 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            & $ghStar.Source api user/starred/hd0126/dev-setup 2>$null | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host ""
+                $starAns = Read-Host "이 스크립트가 도움이 됐다면 GitHub star로 응원해주세요! 지금 누를까요? [y/N]"
+                if ($starAns -match '^(y|yes)$') {
+                    & $ghStar.Source api -X PUT user/starred/hd0126/dev-setup 2>$null | Out-Null
+                    if ($LASTEXITCODE -eq 0) { Write-Host "  Star 감사합니다!" -ForegroundColor Green }
+                    else { Write-Host "  star 실패 — https://github.com/hd0126/dev-setup 에서 직접 눌러주세요." -ForegroundColor DarkGray }
+                }
+            }
+        } else {
+            Write-Host "도움이 됐다면 star: https://github.com/hd0126/dev-setup" -ForegroundColor DarkGray
+        }
+    }
 } else {
     Write-Host "Done with $($failedPkgs.Count) issue(s):" -ForegroundColor Yellow
     foreach ($f in $failedPkgs) {
@@ -712,14 +735,25 @@ $(( $failedPkgs | ForEach-Object { "- $_" } ) -join "`n")
     $gh = Get-Command gh -ErrorAction SilentlyContinue
     if ($gh -and -not $NonInteractive) {
         Write-Host ""
-        $ans = Read-Host "  gh가 설치돼 있습니다. 지금 바로 이슈를 생성할까요? (gh 로그인 필요) [y/N]"
+        $ans = Read-Host "  gh로 지금 바로 이슈를 생성할까요? [y/N]"
         if ($ans -match '^(y|yes)$') {
-            $tmpBody = Join-Path $env:TEMP "devsetup-issue-body.md"
-            $reportBody | Out-File -FilePath $tmpBody -Encoding utf8
-            & $gh.Source issue create --repo hd0126/dev-setup --title $reportTitle --body-file $tmpBody
-            if ($LASTEXITCODE -eq 0) { Write-Host "  이슈가 생성되었습니다. 감사합니다!" -ForegroundColor Green }
-            else { Write-Host "  gh 제출 실패 — 위 링크로 열어주세요 ('gh auth login' 후 재시도 가능)." -ForegroundColor DarkGray }
-            Remove-Item $tmpBody -Force -ErrorAction SilentlyContinue
+            # 로그인 여부를 먼저 확인하고, 안 돼 있으면 브라우저 로그인을 즉석 안내 (mac/linux 와 동등).
+            & $gh.Source auth status 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "  GitHub 로그인이 필요합니다 — 브라우저 안내를 따라주세요 (무료 계정이면 충분)." -ForegroundColor DarkGray
+                & $gh.Source auth login --hostname github.com --web
+            }
+            & $gh.Source auth status 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                $tmpBody = Join-Path $env:TEMP "devsetup-issue-body.md"
+                $reportBody | Out-File -FilePath $tmpBody -Encoding utf8
+                & $gh.Source issue create --repo hd0126/dev-setup --title $reportTitle --body-file $tmpBody
+                if ($LASTEXITCODE -eq 0) { Write-Host "  이슈가 생성되었습니다. 감사합니다!" -ForegroundColor Green }
+                else { Write-Host "  gh 제출 실패 — 위 링크로 직접 열어주세요 (클릭 -> Submit)." -ForegroundColor DarkGray }
+                Remove-Item $tmpBody -Force -ErrorAction SilentlyContinue
+            } else {
+                Write-Host "  로그인이 완료되지 않았습니다 — 위 링크로 직접 열어주세요 (클릭 -> Submit)." -ForegroundColor DarkGray
+            }
         }
     }
 }
