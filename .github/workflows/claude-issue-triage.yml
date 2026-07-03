@@ -4,8 +4,11 @@
 name: Claude issue triage
 
 on:
-  schedule:
-    - cron: "0 0 * * *" # 00:00 UTC = 09:00 KST
+  # 매일 자동 실행은 보류 중 — API 크레딧 없이는 매번 실패하므로 schedule 을 꺼둔다.
+  # console.anthropic.com 에서 API 크레딧 충전(또는 구독 Agent SDK 크레딧 정책 재개) 후
+  # 아래 schedule 두 줄의 주석을 풀면 매일 09:00 KST 자동 검토가 재개된다.
+  # schedule:
+  #   - cron: "0 0 * * *" # 00:00 UTC = 09:00 KST
   workflow_dispatch: {}
 
 permissions:
