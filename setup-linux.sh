@@ -537,12 +537,21 @@ $(printf -- '- %s\n' "${FAILED[@]}")
     echo "  $URL"
 
     if command -v gh &>/dev/null; then
-        printf "  gh로 지금 이슈를 생성할까요? (gh 로그인 필요) [y/N] "
+        printf "  gh로 지금 이슈를 생성할까요? [y/N] "
         read -r ans </dev/tty 2>/dev/null || ans=""
         case "$ans" in
-            y|Y|yes) printf '%s' "$BODY" | gh issue create --repo hd0126/dev-setup --title "$TITLE" --body-file - \
-                       && ok "이슈가 생성되었습니다. 감사합니다!" \
-                       || warn "gh 제출 실패 — 위 링크로 열어주세요 ('gh auth login' 후 재시도 가능)." ;;
+            y|Y|yes)
+                if ! gh auth status &>/dev/null; then
+                    echo "  GitHub 로그인이 필요합니다 — 브라우저 안내를 따라주세요 (무료 계정이면 충분)."
+                    gh auth login --hostname github.com --web </dev/tty || true
+                fi
+                if gh auth status &>/dev/null; then
+                    printf '%s' "$BODY" | gh issue create --repo hd0126/dev-setup --title "$TITLE" --body-file - \
+                        && ok "이슈가 생성되었습니다. 감사합니다!" \
+                        || warn "gh 제출 실패 — 위 링크로 직접 열어주세요 (클릭 → Submit)."
+                else
+                    warn "로그인이 완료되지 않았습니다 — 위 링크로 직접 열어주세요 (클릭 → Submit)."
+                fi ;;
         esac
     fi
 fi
