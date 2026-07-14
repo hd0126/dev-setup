@@ -82,10 +82,31 @@ else
 fi
 
 # ── 3. Node.js LTS (Homebrew) ─────────────────────────────
+# `brew install node`는 Current 라인(LTS 아님)을 설치한다 — Linux(NodeSource
+# setup_lts.x)와 동일하게 최신 LTS 메이저를 동적으로 판별해 node@<major>를 설치.
+# 특정 메이저 하드코딩 금지: LTS가 바뀔 때마다 스크립트가 낡는다.
+node_lts_major() {
+    curl -fsSL --max-time 10 https://nodejs.org/dist/index.json 2>/dev/null |
+        python3 -c 'import sys,json;vs=[v for v in json.load(sys.stdin) if v.get("lts")];print(max(int(v["version"][1:].split(".")[0]) for v in vs) if vs else "")' 2>/dev/null
+}
 if ! command -v node &>/dev/null; then
-    install_brew node
+    LTS_MAJOR="$(node_lts_major)" || LTS_MAJOR=""
+    if [ -n "$LTS_MAJOR" ] && brew info "node@$LTS_MAJOR" &>/dev/null; then
+        install_brew "node@$LTS_MAJOR"
+        # node@<major>는 keg-only — node/npm이 PATH에 잡히도록 링크
+        brew link --overwrite --force "node@$LTS_MAJOR" &>/dev/null \
+            || warn "node@$LTS_MAJOR 링크 실패 — PATH에 $(brew --prefix "node@$LTS_MAJOR" 2>/dev/null)/bin 추가 필요"
+    else
+        warn "Node LTS 버전 판별 실패(네트워크/포뮬러 없음) — brew 기본 node(Current)로 대체"
+        install_brew node
+    fi
 else
-    ok "Node.js (already installed: $(node --version))"
+    NODE_V=$(node --version)
+    if [ "$(node -p 'process.release.lts ? "y" : "n"' 2>/dev/null)" != "y" ]; then
+        warn "기존 Node.js $NODE_V 는 LTS가 아닙니다(Current 또는 EOL) — 기존 설치 존중, 계속 진행"
+        warn "  LTS 전환: brew install node@<LTS메이저> && brew link --overwrite --force node@<LTS메이저>"
+    fi
+    ok "Node.js (already installed: $NODE_V)"
 fi
 
 # ── 5. npm global packages ────────────────────────────────
@@ -324,6 +345,19 @@ EOF
     append_zshrc 'brew shellenv' "Homebrew shellenv" "$BLOCK"
 fi
 
+# Homebrew python@3.12는 무버전 명령(python3/pip3)을 기본 bin이 아닌
+# libexec/bin에만 둔다 — PATH에 없으면 CLT의 /usr/bin/python3가 잡힌다.
+# autosuggestions 블록처럼 양쪽 prefix를 하드코딩(브루 셸env 로드 순서 무관).
+IFS= read -r -d '' BLOCK <<'EOF' || true
+# ── Homebrew Python (python3/pip3 → python@3.12) ─────────
+if [ -d /opt/homebrew/opt/python@3.12/libexec/bin ]; then
+    export PATH="/opt/homebrew/opt/python@3.12/libexec/bin:$PATH"
+elif [ -d /usr/local/opt/python@3.12/libexec/bin ]; then
+    export PATH="/usr/local/opt/python@3.12/libexec/bin:$PATH"
+fi
+EOF
+append_zshrc 'python@3\.12/libexec' "Homebrew Python PATH (python3/pip3)" "$BLOCK"
+
 # syntax-highlighting은 모든 위젯 로드 후 마지막에 source해야 하고,
 # history-substring-search는 그보다도 뒤여야 함 (플러그인 공식 권장 순서)
 IFS= read -r -d '' BLOCK <<'EOF' || true
@@ -444,3 +478,6 @@ echo -e "${CYAN}  changes, then run: claude --version${NC}"
 echo -e "${CYAN}  아이콘이 □로 깨지면: 터미널 설정에서 폰트를${NC}"
 echo -e "${CYAN}  'JetBrainsMono Nerd Font'로 변경하세요${NC}"
 echo -e "${GREEN}=============================================${NC}"
+
+# 실패 항목이 있으면 비정상 종료 — CI·프로비저닝 도구가 실패를 감지할 수 있도록
+[ ${#FAILED[@]} -eq 0 ] || exit 1

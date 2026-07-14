@@ -53,7 +53,9 @@ jobs:
           gh label create claude-triaged --repo "${{ github.repository }}" \
             --description "Claude가 배치 검토를 마친 이슈" --color 1D76DB 2>/dev/null || true
 
-      - uses: anthropics/claude-code-action@v1
+      # 쓰기 토큰을 쓰는 제3자 Action은 이동 가능한 태그(@v1) 대신 전체 SHA로 고정
+      # (GitHub Actions 보안 권장사항). 업데이트 시 새 SHA를 검증 후 교체할 것.
+      - uses: anthropics/claude-code-action@f1bd27ca5b54584506e40e17884d90bdaaa1a9b3 # v1
         env:
           GH_TOKEN: ${{ github.token }}
         with:

@@ -607,3 +607,6 @@ echo -e "${CYAN}  Done in ${ELAPSED}s${NC}"
 echo -e "${CYAN}  NEXT STEP: Open a new terminal to apply${NC}"
 echo -e "${CYAN}  changes, then run: claude --version${NC}"
 echo -e "${GREEN}=============================================${NC}"
+
+# 실패 항목이 있으면 비정상 종료 — CI·프로비저닝 도구가 실패를 감지할 수 있도록
+[ ${#FAILED[@]} -eq 0 ] || exit 1

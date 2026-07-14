@@ -95,8 +95,20 @@ function global:prompt {
     $gitHead = & {
         $d = $PWD.Path
         while ($d) {
-            $f = Join-Path $d '.git\HEAD'
+            $g = Join-Path $d '.git'
+            $f = Join-Path $g 'HEAD'
             if (Test-Path $f -PathType Leaf) { return $f }
+            if (Test-Path $g -PathType Leaf) {
+                # worktree/submodule: .git이 "gitdir: <경로>" 한 줄짜리 파일
+                $gd = (Get-Content $g -Raw -ErrorAction SilentlyContinue) -replace '^gitdir:\s*', ''
+                $gd = $gd.Trim()
+                if ($gd) {
+                    if (-not [IO.Path]::IsPathRooted($gd)) { $gd = Join-Path $d $gd }
+                    $f2 = Join-Path $gd 'HEAD'
+                    if (Test-Path $f2 -PathType Leaf) { return $f2 }
+                }
+                return
+            }
             $p = Split-Path $d -Parent
             if ($p -eq $d) { break }
             $d = $p

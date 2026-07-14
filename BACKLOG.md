@@ -10,6 +10,12 @@
   충전(또는 구독 Agent SDK 크레딧 정책 재개) 후, `.github/workflows/claude-issue-triage.yml`의
   `schedule:` 주석 두 줄을 풀고 엔드투엔드 재검증(수동 실행 → Claude가 실제로 코멘트/PR 생성).
   현재는 배관 검증 완료·크레딧만 부족한 보류 상태.
+  **재개 전 필수 보안 강화(외부 리뷰 지적)**: 외부인이 쓴 이슈 본문을 읽는 에이전트에
+  `contents: write` + `GH_TOKEN` + Bash를 동시에 주면 프롬프트 인젝션 시 권한 경계가 없다.
+  ① 분석 단계는 `contents: read`/`issues: read`로 분리하고 수정 단계는 관리자 신뢰 라벨
+  또는 Environment 승인 뒤에만 실행, ② `GH_TOKEN`을 분석 에이전트 env에 직접 노출하지 않기,
+  ③ 악성 이슈 본문(지시문 삽입)으로 모의 침투 테스트 후 재활성화.
+  (액션 SHA 고정은 2026-07-15에 선반영 완료.)
 
 - [ ] **[P2] README에 `curl | bash` 신뢰 모델 명시** — 부트스트랩 특성상 원격 스크립트를
   체크섬/서명 핀 없이 실행한다는 점을 "accepted risk"로 문서화(리뷰 지적). 내가 통제하는

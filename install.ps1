@@ -806,3 +806,8 @@ Write-Host "Nerd Font was installed and set as the terminal font automatically."
 Write-Host "If icons still look broken after restarting, set the font by hand:" -ForegroundColor DarkGray
 Write-Host "  Windows Terminal : Settings > Defaults > Appearance > Font face > 'JetBrainsMono Nerd Font'" -ForegroundColor DarkGray
 Write-Host "  Legacy console   : title bar > Properties > Font > 'JetBrainsMono Nerd Font Mono'" -ForegroundColor DarkGray
+
+# 실패 항목이 있으면 비정상 종료 — CI·프로비저닝 도구가 실패를 감지할 수 있도록.
+# irm | iex 경로는 exit가 사용자 터미널 세션을 닫아버리므로(위 dry-run 분기와 동일한 이유)
+# 파일 실행일 때만 종료 코드로 전달하고, iex는 위에 출력된 실패 목록으로 갈음한다.
+if ($failedPkgs.Count -gt 0 -and $RunAsFile) { exit 1 }
