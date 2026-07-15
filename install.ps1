@@ -305,12 +305,18 @@ foreach ($pkg in $wingetList) {
         else                   { Write-Host " [INSTALLED]" -ForegroundColor Green }
     } elseif ($exit -eq -1978335189) {
         Write-Host " [OK - already latest]" -ForegroundColor Green   # 0x8A15002B (no update needed)
+    } elseif ($alreadyInstalled) {
+        # 업그레이드 실패지만 기존 버전이 이미 설치·동작 중이므로 치명적 실패가 아니다.
+        # (winget 업그레이드는 설치기 이슈로 0x8A150006 등으로 자주 실패한다. 예: Git)
+        $hex = if ($exit -lt 0) { '0x{0:X8}' -f [uint32]([long]$exit + 4294967296) } else { '0x{0:X8}' -f [uint32]$exit }
+        Write-Host " [OK - kept installed version (upgrade skipped: exit $exit / $hex)]" -ForegroundColor Green
     } else {
+        $hex = if ($exit -lt 0) { '0x{0:X8}' -f [uint32]([long]$exit + 4294967296) } else { '0x{0:X8}' -f [uint32]$exit }
         $reason = switch ($exit) {
             1603        { "installer conflict (exit 1603)" }
             -1073741819 { "installer crashed (0xC0000005 access violation - often antivirus or a broken VC++ runtime)" }
             5           { "access denied (exit 5 - try running this script once as Administrator)" }
-            default     { "exit $exit" }
+            default     { "exit $exit ($hex)" }
         }
         if ($pkg.Optional) {
             # Optional extras (e.g. fonts) must never fail the whole run.
@@ -411,20 +417,77 @@ if ($selectedNpm) {
         # The child runs with -ExecutionPolicy Bypass so the saved .ps1 runs under the
         # default Restricted policy too.
         if ($isNative) {
-            # 이미 네이티브 설치돼 있으면 대용량 재다운로드 skip — 네이티브 빌드는
+            # 실제 설치 경로는 도구마다 다르다: Claude Code 는 ~/.local\bin\claude.exe,
+            # codex 는 %LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe 에 설치된다.
+            # (이전엔 codex 도 ~/.local\bin 으로 잘못 확인해 항상 재설치를 시도했다.)
+            if ($pkg.Name -eq 'Claude Code') {
+                $nativeBin = Join-Path $env:USERPROFILE '.local\bin\claude.exe'
+                $nativeCmd = 'claude'; $npmName = '@anthropic-ai/claude-code'
+            } else {
+                $nativeBin = Join-Path $env:LOCALAPPDATA 'Programs\OpenAI\Codex\bin\codex.exe'
+                $nativeCmd = 'codex';  $npmName = '@openai/codex'
+            }
+
+            # 이미 네이티브로 설치돼 있으면 대용량 재다운로드 skip — 네이티브 빌드는
             # 백그라운드 자동 업데이트가 있어 기존 설치로 충분 (mac/linux와 동일 동작)
-            $nativeExe = if ($pkg.Name -eq 'Claude Code') { 'claude.exe' } else { 'codex.exe' }
-            $nativeBin = Join-Path $env:USERPROFILE ".local\bin\$nativeExe"
             if (Test-Path $nativeBin) {
                 Write-Host " [OK - already installed (native, self-updating)]" -ForegroundColor Green
                 continue
             }
+
+            # 비-native(npm/bun) 설치본이 있으면 먼저 제거하고 native 로 교체한다.
+            # 안 지우면 PATH 순서로 어느 쪽 codex/claude 가 실행될지 애매해진다.
+            $existingCmd = Get-Command $nativeCmd -ErrorAction SilentlyContinue
+            if ($existingCmd -and ($existingCmd.Source -match 'node_modules|\\npm\\|\.bun\\')) {
+                Write-Host ""
+                Write-Host "  removing non-native $nativeCmd at $($existingCmd.Source) ..." -ForegroundColor Yellow
+                $npmRm = Get-Command npm.cmd -ErrorAction SilentlyContinue
+                if ($npmRm) { & $npmRm.Source uninstall -g $npmName 2>&1 | Out-Null }
+            }
+
             Write-Host ""
-            $tmp = Join-Path $env:TEMP "devsetup-native-$npmIdx.ps1"
+            $tmp       = Join-Path $env:TEMP "devsetup-native-$npmIdx.ps1"
+            $nativeLog = Join-Path $env:TEMP ("omc-install-" + ($pkg.Name -replace '[^\w.-]','_') + ".log")
+
+            # 프로필 경로가 심볼릭 링크/정션이면(예: 한글 계정명을 ASCII 로 우회한 경우)
+            # codex 의 tar 압축 해제가 "Cannot extract through symlink" 로 거부된다.
+            # 링크가 해석된 실제 경로를 CODEX_HOME/TEMP 로 넘겨 tar 가 링크를 통과하지
+            # 않게 한다. 두 경로는 물리적으로 같은 폴더라 codex 런타임엔 영향이 없다.
+            $profItem = Get-Item $env:USERPROFILE -Force -ErrorAction SilentlyContinue
+            $profReal = if ($profItem -and $profItem.Target) { [string]$profItem.Target } else { $env:USERPROFILE }
+            $profileIsLink = ($profReal -ne $env:USERPROFILE)
+
+            $savedTemp = $env:TEMP; $savedTmp = $env:TMP
+            $savedCodexHome = $env:CODEX_HOME; $savedNI = $env:CODEX_NON_INTERACTIVE
+            $env:CODEX_NON_INTERACTIVE = '1'   # "Start Codex now?" Read-Host 멈춤 방지
+            if ($pkg.Name -ne 'Claude Code' -and $profileIsLink) {
+                $env:CODEX_HOME = Join-Path $profReal '.codex'
+                $realTemp = Join-Path $profReal 'AppData\Local\Temp'
+                if (Test-Path $realTemp) { $env:TEMP = $realTemp; $env:TMP = $realTemp }
+            }
+
             try {
                 Invoke-RestMethod $pkg.Installer -OutFile $tmp
-                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $tmp
-                if ($LASTEXITCODE -eq 0) {
+                # 출력을 캡처(=리다이렉트)하면 프롬프트도 자동 우회되고, 실패 시 실제
+                # 원인(tar/symlink/네트워크)을 로그로 남겨 이슈 리포트에 담을 수 있다.
+                $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $tmp 2>&1 | Out-String
+                $out | Out-File -FilePath $nativeLog -Encoding utf8
+                if ($out.Trim()) { Write-Host $out.TrimEnd() -ForegroundColor DarkGray }
+
+                # codex 에 표기 충돌(ASCII vs 한글)로 남은 옛 정션이 있으면 "Refusing to
+                # retarget junction" 으로 실패한다. standalone 을 정리하고 1회 재시도.
+                if ($pkg.Name -ne 'Claude Code' -and -not (Test-Path $nativeBin) -and $profileIsLink) {
+                    Write-Host "  retry (clean standalone)..." -ForegroundColor DarkGray
+                    Remove-Item (Join-Path $env:CODEX_HOME 'packages\standalone') -Recurse -Force -ErrorAction SilentlyContinue
+                    Remove-Item (Join-Path $env:LOCALAPPDATA 'Programs\OpenAI\Codex') -Recurse -Force -ErrorAction SilentlyContinue
+                    $out2 = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $tmp 2>&1 | Out-String
+                    $out2 | Out-File -FilePath $nativeLog -Encoding utf8 -Append
+                    if ($out2.Trim()) { Write-Host $out2.TrimEnd() -ForegroundColor DarkGray }
+                }
+
+                # 성공 판정은 exit code 가 아니라 실제 바이너리 존재로 한다 — 네이티브
+                # 설치기가 성공해도 비정상 종료 코드를 남기는 경우가 있어 오탐을 막는다.
+                if (Test-Path $nativeBin) {
                     Write-Host "  -> $($pkg.Name) [OK - native installer]" -ForegroundColor Green
                     # Claude Code's Windows native installer drops claude.exe in
                     # %USERPROFILE%\.local\bin but, unlike codex, does NOT add that
@@ -440,14 +503,23 @@ if ($selectedNpm) {
                         if ($env:Path -notlike "*$localBin*") { $env:Path += ";$localBin" }
                     }
                 } else {
-                    Write-Host "  -> $($pkg.Name) [FAILED] native installer (exit $LASTEXITCODE)" -ForegroundColor Red
+                    Write-Host "  -> $($pkg.Name) [FAILED] native installer (log: $nativeLog)" -ForegroundColor Red
                     $failedPkgs += "$($pkg.Name) (native installer)"
+                    # 실제 원인 줄을 화면에도 노출한다.
+                    $keyLines = @((Get-Content $nativeLog -ErrorAction SilentlyContinue) |
+                        Where-Object { $_ -match 'symlink|Refusing|tar|Cannot extract|throw|Error|Exception|ETIMEDOUT|ENOTFOUND|denied|SHA256|checksum' } |
+                        Select-Object -Last 8)
+                    foreach ($l in $keyLines) { Write-Host "    $($l.Trim())" -ForegroundColor DarkGray }
                 }
             } catch {
                 Write-Host "  -> $($pkg.Name) [FAILED] native installer: $($_.Exception.Message)" -ForegroundColor Red
+                "EXCEPTION: $($_.Exception.Message)" | Out-File -FilePath $nativeLog -Encoding utf8 -Append
                 $failedPkgs += "$($pkg.Name) (native installer)"
             } finally {
                 Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+                $env:TEMP = $savedTemp; $env:TMP = $savedTmp
+                if ($null -eq $savedCodexHome) { Remove-Item Env:CODEX_HOME -ErrorAction SilentlyContinue } else { $env:CODEX_HOME = $savedCodexHome }
+                if ($null -eq $savedNI) { Remove-Item Env:CODEX_NON_INTERACTIVE -ErrorAction SilentlyContinue } else { $env:CODEX_NON_INTERACTIVE = $savedNI }
             }
             continue
         }
@@ -711,10 +783,45 @@ if ($DryRun) {
     # 2) gh (already installed by this script): if present and interactive, offer
     #    to file the issue straight from the terminal.
     $reportTitle = "[install] $($failedPkgs.Count) issue(s) on Windows"
+
+    # ── 진단 정보 수집 (원인 파악에 필요한 맥락) ───────────────
+    # 이전 리포트는 정보가 부족해 진짜 원인(예: 프로필 경로가 심볼릭 링크라 tar 가
+    # "Cannot extract through symlink" 로 압축 해제를 거부) 파악이 어려웠다.
+    # 아래 항목을 자동으로 채워 재현·진단이 가능하게 한다.
+    $diagArch = try { [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture } catch { $env:PROCESSOR_ARCHITECTURE }
+    $diagWinget = try { (winget --version 2>$null | Out-String).Trim() } catch { '' }
+    if (-not $diagWinget) { $diagWinget = 'n/a' }
+
+    # 경로가 심볼릭 링크/정션이면 대상까지 표기한다 (codex tar 실패의 핵심 단서).
+    function Get-LinkInfo([string]$p) {
+        try {
+            $it = Get-Item $p -Force -ErrorAction Stop
+            if ($it.Target) { return "$p  ->  $($it.Target)  [reparse point]" }
+            return "$p  [normal]"
+        } catch { return "$p  [n/a]" }
+    }
+
+    # 주요 도구의 실제 실행 경로 (native vs npm 혼재 여부까지 드러난다).
+    function Get-CmdInfo([string]$n) {
+        $c = Get-Command $n -ErrorAction SilentlyContinue
+        if ($c) { return "- ${n}: $($c.Source)" } else { return "- ${n}: (not found)" }
+    }
+    $toolLines = @('node','npm','git','codex','claude','winget','python','uv') | ForEach-Object { Get-CmdInfo $_ }
+
     $reportBody = @"
 ## 환경 (Environment)
 - OS: Windows $([Environment]::OSVersion.Version)
-- PowerShell: $($PSVersionTable.PSVersion)
+- PowerShell: $($PSVersionTable.PSVersion) ($($PSVersionTable.PSEdition))
+- Architecture: $diagArch
+- winget: $diagWinget
+
+## 경로 진단 (Path diagnostics)
+- USERPROFILE: $(Get-LinkInfo $env:USERPROFILE)
+- LOCALAPPDATA: $(Get-LinkInfo $env:LOCALAPPDATA)
+- TEMP: $(Get-LinkInfo $env:TEMP)
+
+## 감지된 도구 (Detected tools)
+$($toolLines -join "`n")
 
 ## 실패 항목 (Failed items)
 $(( $failedPkgs | ForEach-Object { "- $_" } ) -join "`n")
@@ -725,6 +832,16 @@ $(( $failedPkgs | ForEach-Object { "- $_" } ) -join "`n")
 ## 추가 상황 (Notes)
 <!-- 무엇을 하다 생긴 문제인지 적어주세요 -->
 "@
+
+    # gh 로 제출하는 전체 본문에는 로그 꼬리(각 20줄)까지 접이식(details)으로 붙인다.
+    # (브라우저 URL 은 길이 제한이 있어 $reportBody 엔 로그 경로만 남긴다.)
+    $fence = '```'
+    $logTails = ''
+    foreach ($lf in (Get-ChildItem "$env:TEMP\omc-install-*.log" -ErrorAction SilentlyContinue)) {
+        $tail = (Get-Content $lf.FullName -Tail 20 -ErrorAction SilentlyContinue) -join "`n"
+        $logTails += "`n<details><summary>$($lf.Name)</summary>`n`n$fence`n$tail`n$fence`n</details>`n"
+    }
+    $reportBodyFull = if ($logTails) { $reportBody + "`n## 상세 로그 (Log details)`n" + $logTails } else { $reportBody }
     $issueUrl = "https://github.com/hd0126/dev-setup/issues/new?title=$([uri]::EscapeDataString($reportTitle))&body=$([uri]::EscapeDataString($reportBody))"
 
     Write-Host "문제를 알려주세요 (초보 환영):" -ForegroundColor Cyan
@@ -746,7 +863,7 @@ $(( $failedPkgs | ForEach-Object { "- $_" } ) -join "`n")
             & $gh.Source auth status 2>$null
             if ($LASTEXITCODE -eq 0) {
                 $tmpBody = Join-Path $env:TEMP "devsetup-issue-body.md"
-                $reportBody | Out-File -FilePath $tmpBody -Encoding utf8
+                $reportBodyFull | Out-File -FilePath $tmpBody -Encoding utf8
                 & $gh.Source issue create --repo hd0126/dev-setup --title $reportTitle --body-file $tmpBody
                 if ($LASTEXITCODE -eq 0) { Write-Host "  이슈가 생성되었습니다. 감사합니다!" -ForegroundColor Green }
                 else { Write-Host "  gh 제출 실패 — 위 링크로 직접 열어주세요 (클릭 -> Submit)." -ForegroundColor DarkGray }
