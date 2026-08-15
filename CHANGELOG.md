@@ -1,9 +1,15 @@
 # Changelog
 
 이 프로젝트의 주요 변경 사항을 기록합니다.
-형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따릅니다.
+형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르고,
+버전은 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다.
 
-## [2026-07-15]
+## [Unreleased]
+
+아직 릴리스되지 않은 변경 사항이 여기 쌓입니다. 착수 전 아이디어는
+[BACKLOG.md](BACKLOG.md)에 있습니다.
+
+## [0.3.0] - 2026-07-15
 
 ### Security
 - **`curl | bash`에서 현재 폴더의 스크립트를 오인 실행하던 문제 수정** — `install.sh`가
@@ -31,7 +37,7 @@
 - **PowerShell 프롬프트가 git worktree/submodule에서 브랜치를 못 읽던 문제** — `.git`이
   디렉터리가 아닌 `gitdir: <경로>` 파일인 경우를 따라가 HEAD를 읽도록 수정.
 
-## [2026-07-03]
+## [0.2.0] - 2026-07-03
 
 ### Added
 - **터미널 이슈 리포터 개선** — 설치 실패 시 `gh` 로그인 여부를 먼저 확인하고,
@@ -67,3 +73,12 @@
   수동 실행만 유지(크레딧 충전 또는 구독 Agent SDK 크레딧 정책 재개 시 주석 두 줄만 풀면 재개).
 - **README** — Linux의 history-substring 지원 반영, 이슈 자동 검토 안내 문구를 실제 상태에
   맞게 정정.
+
+## [0.1.0] - 2026-06-19
+
+초기 릴리스 — Windows·macOS·Linux 3-OS 부트스트랩(`install.ps1` / `install.sh` +
+`setup-mac.sh` / `setup-linux.sh`), AI 코딩 CLI(Claude Code·codex·gemini-cli·omx·omc)와
+모던 터미널 도구 설치, 셸 프로필 설정, 초보자용 이슈 폼과 lint 워크플로.
+
+이 CHANGELOG 도입 이전이라 항목별 기록은 없습니다. 상세 변경은 `8b53290`(2026-06-19)부터의
+커밋 로그를 참조하십시오.
