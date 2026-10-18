@@ -1,4 +1,4 @@
-﻿# Windows setup script (winget + npm)
+# Windows setup script (winget + npm)
 # Run (admin NOT required - installs are user-scope; only retry as Administrator
 # if a system-wide install fails with access denied):
 #   powershell -ExecutionPolicy Bypass -File install.ps1
@@ -20,6 +20,18 @@ try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAc
 # already negotiates TLS 1.2), but older Windows PowerShell 5.1 hosts default to
 # TLS 1.0 and would fail to reach GitHub/npm. -bor only adds, never removes.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
+
+# 한글/공백 계정명이면 $env:TEMP 가 8.3 짧은 이름(C:\Users\곽대운~1\...)이 되는데,
+# Remove-Item 은 이 경로의 "존재하는" 항목을 지우지 못하고 -ErrorAction 도 무시한 채
+# "지정한 경로 ...~1에 개체가 없습니다" 를 낸다(-LiteralPath 도 동일, PS 5.1·7 공통).
+# Get-Item 으로 긴 경로를 얻은 뒤 지운다. 없는 경로는 조용히 건너뛴다.
+function Remove-TempPath {
+    param([string[]]$Path, [switch]$Recurse)
+    foreach ($p in $Path) {
+        try { $full = (Get-Item -LiteralPath $p -Force -ErrorAction Stop).FullName } catch { continue }
+        Remove-Item -LiteralPath $full -Recurse:$Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
 
 # ── Non-interactive / dry-run (unattended installs and CI) ──────────────────
 # Set these env vars BEFORE running (works with the irm | iex one-liner too):
@@ -348,7 +360,7 @@ if ($zoxidePkg -and $zoxidePkg.On -and -not $DryRun -and -not (Get-Command zoxid
         if (-not $asset) { throw "no Windows binary for arch '$arch'" }
         $zip = Join-Path $env:TEMP 'zoxide.zip'
         $dir = Join-Path $env:TEMP 'zoxide-bin'
-        if (Test-Path $dir) { Remove-Item $dir -Recurse -Force }
+        Remove-TempPath $dir -Recurse
         Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip -UseBasicParsing
         Expand-Archive -Path $zip -DestinationPath $dir -Force
         $exe = Get-ChildItem -Path $dir -Recurse -Filter 'zoxide.exe' | Select-Object -First 1
@@ -516,7 +528,7 @@ if ($selectedNpm) {
                 "EXCEPTION: $($_.Exception.Message)" | Out-File -FilePath $nativeLog -Encoding utf8 -Append
                 $failedPkgs += "$($pkg.Name) (native installer)"
             } finally {
-                Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+                Remove-TempPath $tmp
                 $env:TEMP = $savedTemp; $env:TMP = $savedTmp
                 if ($null -eq $savedCodexHome) { Remove-Item Env:CODEX_HOME -ErrorAction SilentlyContinue } else { $env:CODEX_HOME = $savedCodexHome }
                 if ($null -eq $savedNI) { Remove-Item Env:CODEX_NON_INTERACTIVE -ErrorAction SilentlyContinue } else { $env:CODEX_NON_INTERACTIVE = $savedNI }
@@ -620,7 +632,7 @@ if (-not $DryRun) {
     # 방금 설치된 도구(zoxide/fzf/starship)가 프로필의 도구 캐시에 반영되도록
     # 캐시를 무효화한다 — 안 하면 이전 캐시(도구 없음)가 남아 zoxide/fzf가
     # 새 터미널에서도 계속 비활성 상태로 보인다.
-    Remove-Item "$env:TEMP\pwsh_tools_cache.ps1", "$env:TEMP\zoxide_init_cache.ps1" -Force -ErrorAction SilentlyContinue
+    Remove-TempPath "$env:TEMP\pwsh_tools_cache.ps1", "$env:TEMP\zoxide_init_cache.ps1"
     Write-Host "  Tool cache invalidated (fresh detection on next shell)." -ForegroundColor DarkGray
 } else {
     Write-Host "[DRY-RUN] would download the PowerShell profile to `$PROFILE." -ForegroundColor DarkGray
@@ -649,7 +661,7 @@ if ($fontPkg -and $fontPkg.On -and -not $DryRun) {
             Write-Host "  Font missing - installing from nerd-fonts releases (no admin needed)..." -ForegroundColor DarkGray
             $zip    = Join-Path $env:TEMP "JetBrainsMonoNF.zip"
             $tmpDir = Join-Path $env:TEMP "JetBrainsMonoNF"
-            if (Test-Path $tmpDir) { Remove-Item $tmpDir -Recurse -Force }
+            Remove-TempPath $tmpDir -Recurse
             Invoke-WebRequest -Uri "https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip" -OutFile $zip -UseBasicParsing
             Expand-Archive -Path $zip -DestinationPath $tmpDir -Force
             $fontDst = Join-Path $env:LOCALAPPDATA "Microsoft\Windows\Fonts"
@@ -867,7 +879,7 @@ $(( $failedPkgs | ForEach-Object { "- $_" } ) -join "`n")
                 & $gh.Source issue create --repo hd0126/dev-setup --title $reportTitle --body-file $tmpBody
                 if ($LASTEXITCODE -eq 0) { Write-Host "  이슈가 생성되었습니다. 감사합니다!" -ForegroundColor Green }
                 else { Write-Host "  gh 제출 실패 — 위 링크로 직접 열어주세요 (클릭 -> Submit)." -ForegroundColor DarkGray }
-                Remove-Item $tmpBody -Force -ErrorAction SilentlyContinue
+                Remove-TempPath $tmpBody
             } else {
                 Write-Host "  로그인이 완료되지 않았습니다 — 위 링크로 직접 열어주세요 (클릭 -> Submit)." -ForegroundColor DarkGray
             }
