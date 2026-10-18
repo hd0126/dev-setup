@@ -16,7 +16,7 @@ function conda {
     conda @args
 }
 
-# --- 3. Tool availability cache (재생성: Remove-Item $env:TEMP\pwsh_tools_cache.ps1) ---
+# --- 3. Tool availability cache (재생성: Remove-Item ([IO.Path]::GetFullPath("$env:TEMP\pwsh_tools_cache.ps1"))) ---
 $toolsCache = "$env:TEMP\pwsh_tools_cache.ps1"
 if (-not (Test-Path $toolsCache)) {
     $z = [bool](Get-Command zoxide   -ErrorAction SilentlyContinue)

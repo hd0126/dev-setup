@@ -150,7 +150,7 @@ fzf --version       # Ctrl+R 히스토리 검색
 
 ```powershell
 # 새 도구 설치 후 캐시 갱신
-Remove-Item $env:TEMP\pwsh_tools_cache.ps1
+Remove-Item ([IO.Path]::GetFullPath("$env:TEMP\pwsh_tools_cache.ps1"))
 ```
 
 ---
@@ -683,12 +683,16 @@ claude plugin install andrej-karpathy-skills@karpathy-skills
 프로필은 첫 실행 시 도구(zoxide·fzf·starship) 유무를 한 번만 검사해 캐시에 저장합니다.
 이후 실행에서는 캐시만 읽으므로 `Get-Command` 탐색 비용 없이 빠릅니다.
 
+`GetFullPath`로 감싸는 이유: 계정명에 한글·공백이 있으면 `$env:TEMP`가 짧은 이름
+(`C:\Users\홍길동~1\...`)이 되는데, 이 경로로는 `Remove-Item`이 "지정한 경로 ...~1에
+개체가 없습니다" 에러를 내며 파일을 지우지 못합니다. 긴 경로로 바꿔 지우면 정상 동작합니다.
+
 ```powershell
 # 새 도구를 설치한 후 캐시 갱신 (필수)
-Remove-Item $env:TEMP\pwsh_tools_cache.ps1
+Remove-Item ([IO.Path]::GetFullPath("$env:TEMP\pwsh_tools_cache.ps1"))
 
 # zoxide init 캐시 재생성
-Remove-Item $env:TEMP\zoxide_init_cache.ps1
+Remove-Item ([IO.Path]::GetFullPath("$env:TEMP\zoxide_init_cache.ps1"))
 ```
 
 ### 🐧 Linux / 🍎 macOS

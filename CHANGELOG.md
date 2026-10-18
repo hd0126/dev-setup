@@ -19,6 +19,8 @@
   `-ErrorAction`도 무시한 채 에러를 냈다. 그 결과 도구 캐시가 무효화되지 않아 새로 설치한
   zoxide/fzf가 새 터미널에서도 비활성으로 남았다. 긴 경로로 변환 후 삭제하는
   `Remove-TempPath`로 TEMP 삭제 5곳을 교체.
+- **README·프로필의 수동 캐시 삭제 안내도 같은 이유로 실패** — `Remove-Item $env:TEMP\...`를
+  `Remove-Item ([IO.Path]::GetFullPath("$env:TEMP\..."))`로 바꾸고 이유를 README에 설명.
 
 ## [0.3.0] - 2026-07-15
 
