@@ -121,15 +121,23 @@ jobs:
       # text is decoded as UTF-8 and handed to Invoke-Expression. (`-File` under 5.1 decodes
       # with the system code page; the runner is English/CP1252, where this BOM-less file
       # cannot parse - see the header of install.ps1. ci.yml checks the Korean CP949 case.)
+      #
+      # It runs in a SEPARATE powershell.exe, not in the step host: GitHub's `powershell`
+      # step wrapper sets $ErrorActionPreference = 'Stop', which turns any native stderr
+      # line (e.g. `tldr --list` on an empty cache) into a terminating error. A user's
+      # console uses 'Continue'. The tiny wrapper sits in the checkout so the script sees
+      # the local profile next to it (as a clone run does) instead of main's.
       - name: Run install.ps1 like the README one-liner (Windows PowerShell 5.1, irm | iex)
         if: matrix.shell == 'powershell'
         shell: powershell
         env:
           DEVSETUP_NONINTERACTIVE: "1"
         run: |
-          $script = [IO.File]::ReadAllText("$PWD\install.ps1", [Text.Encoding]::UTF8)
-          Invoke-Expression $script
-          if ($failedPkgs.Count -gt 0) { Write-Host "::error::install.ps1 reported failures: $($failedPkgs -join '; ')"; exit 1 }
+          $wrapper = Join-Path $PWD 'e2e-oneliner.ps1'
+          Set-Content -Path $wrapper -Encoding ASCII -Value 'Invoke-Expression ([IO.File]::ReadAllText((Join-Path $PSScriptRoot "install.ps1"), [Text.Encoding]::UTF8))'
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File $wrapper
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { Write-Host "::error::install.ps1 exited $code"; exit 1 }
 
       - name: Run install.ps1 (unattended, PowerShell 7)
         if: matrix.shell == 'pwsh'

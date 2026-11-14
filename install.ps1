@@ -997,10 +997,21 @@ if (-not $DryRun) {
     }
 }
 
-# Download PowerShell profile from the repo
+# Install the PowerShell profile.
+# Run from a repo clone (install.ps1 executed as a file, profile right next to it): use
+# that local copy, so edits in the clone are what gets installed - same rule as
+# install.sh, which runs the local setup-*.sh. Otherwise (irm | iex) download from main.
+# $PSCommandPath is empty for an interactive `irm | iex`, so a one-liner never picks up
+# a file from whatever folder the user happens to be in.
 if (-not $DryRun) {
-    Write-Host "Downloading PowerShell profile..." -ForegroundColor Cyan
     $gistUrl = "https://raw.githubusercontent.com/hd0126/dev-setup/main/Microsoft.PowerShell_profile.ps1"
+    $localProfile = $null
+    if ($PSCommandPath) {
+        $cand = Join-Path (Split-Path -Parent $PSCommandPath) 'Microsoft.PowerShell_profile.ps1'
+        if (Test-Path -LiteralPath $cand) { $localProfile = $cand }
+    }
+    if ($localProfile) { Write-Host "Installing PowerShell profile (local copy: $localProfile)..." -ForegroundColor Cyan }
+    else               { Write-Host "Downloading PowerShell profile..." -ForegroundColor Cyan }
     $pwshProfilePath = Join-Path ([Environment]::GetFolderPath("MyDocuments")) "PowerShell\Microsoft.PowerShell_profile.ps1"
     $profileDir = Split-Path $pwshProfilePath
     New-Item -Path $profileDir -ItemType Directory -Force | Out-Null
@@ -1009,7 +1020,8 @@ if (-not $DryRun) {
         Copy-Item $pwshProfilePath $bakPath
         Write-Host "  Existing profile backed up: $bakPath" -ForegroundColor DarkGray
     }
-    Invoke-WebRequest -Uri $gistUrl -OutFile $pwshProfilePath -UseBasicParsing
+    if ($localProfile) { Copy-Item -LiteralPath $localProfile -Destination $pwshProfilePath -Force }
+    else               { Invoke-WebRequest -Uri $gistUrl -OutFile $pwshProfilePath -UseBasicParsing }
 
     # 방금 설치된 도구(zoxide/fzf/starship)가 프로필의 도구 캐시에 반영되도록 (아래)
     # 캐시를 무효화한다 — 안 하면 이전 캐시(도구 없음)가 남아 zoxide/fzf가
