@@ -1,749 +1,785 @@
-# Dev Environment Setup (Windows · macOS · Linux)
+<div align="center">
 
-AI 코딩 CLI(Claude Code·Codex·Antigravity)와 모던 터미널 도구를 한 줄로 설치하는 크로스플랫폼 부트스트랩입니다.
+# 🛠️ dev-setup
 
-> 🐛 **문제가 생겼나요?** → **[이슈 열기](https://github.com/hd0126/dev-setup/issues/new/choose)** (운영체제와 에러 메시지만 적으면 됩니다 — 초보 환영!)
-> 등록된 이슈는 관리자가 AI 봇 검토를 돌려 진단 코멘트나 수정 PR을 남깁니다.
->
-> ⭐ **도움이 됐다면** → 이 페이지 **우측 상단 Star ⭐** 를 눌러주세요!
->
-> 🤝 직접 고칠 수 있다면 **[Pull Request](https://github.com/hd0126/dev-setup/pulls)** 도 환영합니다.
+**명령 한 줄로 끝내는 AI 코딩 터미널 환경**<br>
+Claude Code · Codex · Antigravity 와 빠르고 편한 터미널 도구를 한 번에 설치합니다.
 
-## 목차
+🪟 Windows · 🍎 macOS · 🐧 Linux (Ubuntu/Debian)
 
-- [처음 설치 (신규)](#처음-설치-신규)
-  - [🪟 Windows](#-windows)
-  - [🐧 Linux / 🍎 macOS](#-linux-ubuntudebian---macos)
-- [설치 확인](#설치-확인)
-- [설치 후 자동 적용되는 설정](#설치-후-자동-적용되는-설정)
-  - [🪟 Windows (PowerShell)](#-windows-powershell)
-  - [🐧 Linux / WSL (bash/zsh)](#-linux--wsl-bashzsh)
-  - [🍎 macOS (zsh)](#-macos-zsh)
-- [이미 설치된 경우 (설정만 추가)](#이미-설치된-경우-설정만-추가)
-  - [🪟 Windows (PowerShell)](#-windows-powershell-1)
-  - [🐧 bash 사용자](#-bash-사용자)
-  - [🐧🍎 zsh 사용자 (Linux / WSL · macOS)](#-zsh-사용자-linux--wsl--macos)
-- [설치 도구 소개](#설치-도구-소개)
-  - [⚡ PowerShell 7](#-powershell-7)
-  - [🚀 Starship](#-starship)
-  - [📁 zoxide](#-zoxide)
-  - [🔍 fzf](#-fzf)
-  - [🔤 JetBrainsMono Nerd Font](#-jetbrainsmono-nerd-font)
-  - [🔎 ripgrep](#-ripgrep)
-  - [✨ 쾌적함 플러스 도구](#-쾌적함-플러스-도구)
-  - [🤖 Claude Code](#-claude-code)
-  - [🟩 Node.js LTS](#-nodejs-lts)
-  - [🐍 Python](#-python)
-  - [⚡ uv](#-uv)
-  - [🐙 Git](#-git)
-  - [🐱 GitHub CLI](#-github-cli)
-  - [🔵 Codex CLI](#-codex-cli)
-  - [💎 Antigravity CLI](#-antigravity-cli-agy)
-  - [🔗 oh-my-codex](#-oh-my-codex-omx)
-  - [🧩 oh-my-claudecode](#-oh-my-claudecode-omc)
-- [Claude Code 플러그인](#claude-code-플러그인-로그인-후-수동-실행)
-- [단축키 / 명령어](#단축키--명령어)
-- [프로필 캐시 관리](#프로필-캐시-관리)
-- [파일 수정 후 업데이트](#파일-수정-후-업데이트)
-- [라이선스](#라이선스)
+[![CI](https://github.com/hd0126/dev-setup/actions/workflows/ci.yml/badge.svg)](https://github.com/hd0126/dev-setup/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+[설치하기](#-설치-3단계) · [무엇이 설치되나](#-한눈에-보기) · [바로 써보기](#-설치-후-바로-써보기) · [도구 소개](#-도구-소개) · [문제 해결](#-문제-해결)
+
+</div>
+
+> 🐛 **막혔나요?** [이슈 열기](https://github.com/hd0126/dev-setup/issues/new/choose) — 운영체제와 에러 메시지만 적어 주세요 (초보 환영!). 설치가 실패하면 스크립트가 내용이 채워진 이슈 링크를 바로 보여 줍니다.
+> ⭐ 도움이 됐다면 우측 상단 **Star**를 눌러 주세요.
 
 ---
 
-## 처음 설치 (신규)
+## 🧭 한눈에 보기
 
-### 🪟 Windows
+```mermaid
+flowchart LR
+    I(["⌨️ 명령 한 줄"]) --> AI
+    I --> SH
+    I --> FIND
+    I --> BASE
 
-PowerShell에서 한 줄 실행 (관리자 권한 불필요 — 사용자 범위로 설치되며, 일부 항목이 access denied로 실패할 때만 관리자로 재시도):
+    subgraph AI["🤖 AI 코딩 도구"]
+        direction TB
+        CC["Claude Code"]
+        CX["Codex CLI"]
+        AG["Antigravity CLI"]
+        OM["omc · omx<br/>멀티에이전트 확장"]
+    end
+
+    subgraph SH["🐚 터미널을 편하게"]
+        direction TB
+        Z["zoxide · 빠른 폴더 이동"]
+        F["fzf · 퍼지 검색"]
+        P["프롬프트 · 자동제안"]
+    end
+
+    subgraph FIND["🔎 찾고 · 보기 좋게"]
+        direction TB
+        RG["ripgrep · fd"]
+        EZA["eza · bat"]
+        DT["delta · tldr"]
+    end
+
+    subgraph BASE["🧱 기본기"]
+        direction TB
+        G["Git · GitHub CLI"]
+        N["Node.js · uv + Python"]
+        NF["Nerd Font"]
+    end
+```
+
+**용도를 보고 고르세요.** Windows는 설치 전에 체크박스 메뉴가 나와서 빼고 싶은 항목을 끌 수 있습니다.
+
+| 분류 | 도구 | 이런 때 씁니다 | 🪟 | 🍎 | 🐧 |
+|---|---|---|:-:|:-:|:-:|
+| 🤖 AI 코딩 | [Claude Code](#-claude-code) | 터미널에서 말로 코드 작성·수정·리뷰 | ✅ | ✅ | ✅ |
+| | [Codex CLI](#-codex-cli) | OpenAI의 코딩 에이전트 | ✅ | ✅ | ✅ |
+| | [Antigravity CLI](#-antigravity-cli-agy) | Google의 코딩 에이전트 (Gemini CLI 후속) | ✅ | ✅ | ✅ |
+| | [omc](#-omc--omx) | Claude Code 멀티에이전트 플러그인 | 📋 | 📋 | 📋 |
+| | [omx](#-omc--omx) | Codex 멀티에이전트 확장 | ✅ | ✅ | ✅ |
+| 🐚 터미널 | [zoxide](#-zoxide) | `z 키워드`로 폴더 바로 이동 | ✅ | ✅ | ✅ |
+| | [fzf](#-fzf) | 명령 기록·파일을 퍼지 검색 (`Ctrl+R` / `Ctrl+T`) | ✅ | ✅ | ✅ |
+| | [프롬프트](#-프롬프트) | 폴더·Git 브랜치·성공/실패 표시 | ✅ 자체 | ✅ Starship | ✅ Starship |
+| | [zsh 플러그인 3종](#-zsh-플러그인) | 회색 자동제안 · 오타 색상 · ↑↓ 부분 검색 | — | ✅ | ✅ |
+| 🔎 찾기·보기 | [ripgrep](#-ripgrep) | 파일 **안의 내용** 검색 | ✅ | ✅ | ✅ |
+| | [fd](#-fd) | 파일 **이름** 검색 (Ctrl+T 가속) | ✅ | ✅ | ✅ |
+| | [eza](#-eza) | 보기 좋은 `ls` → `ll` · `lt` | ✅ | ✅ | ✅ |
+| | [bat](#-bat) | 색깔 있는 `cat` | ✅ | ✅ | ✅ |
+| | [delta](#-delta) | 읽기 쉬운 `git diff` | ✅ | ✅ | ✅ |
+| | [tldr](#-tldr) | 예시 위주 명령어 도움말 | ✅ | ✅ | ✅ |
+| 🧱 기본기 | [Git · GitHub CLI](#-git--github-cli) | 버전 관리 · PR/이슈 | ✅ | ✅ | ✅ |
+| | [Node.js LTS](#-nodejs-lts) | omc·omx·MCP 서버 실행에 필요 | ✅ | ✅ | ✅ |
+| | [uv + Python](#-uv--python) | 최신 Python과 빠른 패키지 관리 | ✅ | ✅ | ✅ |
+| | [Nerd Font](#-nerd-font) | 프롬프트·아이콘 글자 깨짐 방지 | ✅ | ✅ | 수동 |
+| | PowerShell 7 | 최신 PowerShell (프로필이 사용) | ✅ | — | — |
+
+✅ 자동 설치 · 📋 설치 끝에 명령 안내(로그인 후 붙여넣기) · — 해당 없음
+
+<details>
+<summary>운영체제별 차이 자세히</summary>
+
+- **Windows** — Starship은 메뉴에 있지만 **기본 해제**입니다. 대신 외부 프로그램 없이 그리는 순수 PowerShell 프롬프트를 씁니다(Enter마다 훨씬 빠름). zsh 플러그인 대신 PowerShell 내장 예측(회색 제안)이 같은 역할을 합니다. `cat`은 PowerShell 기본 동작을 그대로 두고 `bat`은 따로 실행합니다.
+- **macOS** — Homebrew가 없으면 먼저 설치합니다. Nerd Font는 설치되지만 **터미널 앱의 폰트 설정은 직접 바꿔야** 합니다.
+- **Linux** — Ubuntu 22.04에는 eza·delta·tldr 패키지가 없어 건너뜁니다(24.04+는 설치). Ubuntu에서는 `bat`→`batcat`, `fd`→`fdfind` 이름이지만 별칭으로 자동 처리합니다. Nerd Font는 [수동 설치](#-nerd-font)입니다.
+
+</details>
+
+---
+
+## 🚀 설치 (3단계)
+
+### ① 명령 한 줄 실행
+
+**🪟 Windows** — PowerShell 창에 붙여넣기 (관리자 권한 불필요)
 
 ```powershell
 irm https://raw.githubusercontent.com/hd0126/dev-setup/main/install.ps1 | iex
 ```
 
-자동으로 처리합니다:
-- PowerShell 7, zoxide, fzf, ripgrep, Node.js, Git, GitHub CLI, uv 설치 (선택 가능). Starship은 메뉴에서 기본 해제 — 이 프로필은 더 빠른 순수 PowerShell 프롬프트를 씁니다([이유](#-starship))
-- uv로 최신 Python 설치 (`uv python install --default` — 버전 고정 없음. 이미 Python이 있으면 그대로 둠)
-- JetBrainsMono Nerd Font 설치 + Windows Terminal 폰트 자동 설정 (선택 가능)
-- Claude Code (Anthropic 네이티브 인스톨러, 백그라운드 자동 업데이트), codex (OpenAI 네이티브 인스톨러, Node 불필요), Antigravity CLI `agy` (Google 네이티브 인스톨러, Node 불필요), oh-my-codex(omx) 설치 (선택 가능)
-- PowerShell 프로필 다운로드 및 적용 (기존 프로필은 타임스탬프 백업)
-
-> npm을 찾을 수 없으면 안내 메시지 출력 후 중단 — 재시작 후 재실행하면 됩니다.
-
-**무인 설치 (프롬프트 없이):** 선택 메뉴를 건너뛰고 기본 구성을 그대로 설치합니다. 자동화·여러 PC 재설치에 유용합니다. 환경변수를 먼저 설정한 뒤 같은 줄을 실행하세요:
-
-```powershell
-$env:DEVSETUP_NONINTERACTIVE = 1
-irm https://raw.githubusercontent.com/hd0126/dev-setup/main/install.ps1 | iex
-```
-
-> 미리 보기: `$env:DEVSETUP_DRYRUN = 1` 로 실행하면 **실제 설치 없이** "설치 계획"만 출력합니다 (점검·CI용).
-
----
-
-### 🐧 Linux (Ubuntu/Debian) / 🍎 macOS
-
-`install.sh` 한 줄로 OS를 자동 판별해 실행합니다:
+**🍎 macOS · 🐧 Linux** — 터미널에 붙여넣기 (중간에 비밀번호를 물을 수 있음)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hd0126/dev-setup/main/install.sh | bash
 ```
 
-> `curl`이 없는 미니멀 Ubuntu/Debian이라면 먼저: `sudo apt-get update && sudo apt-get install -y curl`
->
-> 소요시간 약 5–15분 (네트워크에 따라 다름). 중간에 **sudo/관리자 비밀번호**를 물을 수 있습니다.
-> 실행 전에 스크립트 내용을 보고 싶다면 위 raw URL을 브라우저에서 열어 확인하세요.
+### ② 새 터미널 열기
 
-**Linux (Ubuntu/Debian)** 에서 자동으로 처리합니다:
-- apt로 curl, git, ripgrep, fzf, python3, unzip 설치; gh는 GitHub 공식 apt 저장소를 추가해 설치 (시스템 기본 버전 유지)
-- NodeSource 저장소로 Node.js LTS 설치 (npm 전역 prefix를 `~/.npm-global`로 설정 → sudo 없이 `npm install -g`)
-- curl로 Starship, zoxide, uv 설치 → uv로 최신 Python 설치 (`~/.local/bin`의 `python`/`python3`, 시스템 python3는 그대로)
-- [쾌적함 플러스 도구](#-쾌적함-플러스-도구): zsh-autosuggestions · zsh-syntax-highlighting · eza · bat · fd · git-delta · tealdeer (apt에 없는 배포판은 자동 skip), zsh-history-substring-search (apt에 없어 공식 저장소를 `~/.zsh`로 git clone)
-- claude·codex·agy(Antigravity CLI)는 공식 네이티브 인스톨러로, omx는 npm으로 설치. omc는 Claude Code 플러그인으로 — 설치 끝에 안내되는 명령을 로그인 후 실행
-- `.bashrc` / `.zshrc`에 `cc`, `ccc`, `ccr`, zoxide, fzf, starship 설정 추가
+PATH와 설정은 **새로 연 터미널**부터 적용됩니다. Windows는 **PowerShell 7(`pwsh`)** 창을 여세요.
 
-**macOS** 에서 자동으로 처리합니다:
-- Homebrew 없으면 자동 설치
-- brew로 git, gh, ripgrep, fzf, zoxide, starship, uv, node 설치 → uv로 최신 Python 설치 (`~/.local/bin`의 `python`/`python3`)
-- [쾌적함 플러스 도구](#-쾌적함-플러스-도구): zsh-autosuggestions · zsh-syntax-highlighting · zsh-history-substring-search · eza · bat · fd · git-delta · tealdeer
-- JetBrainsMono Nerd Font 설치 (아이콘 깨짐 방지 — 터미널 앱 폰트는 직접 변경 필요)
-- claude·codex·agy(Antigravity CLI)는 공식 네이티브 인스톨러로, omx는 npm으로 설치. omc는 Claude Code 플러그인으로 — 설치 끝에 안내되는 명령을 로그인 후 실행
-- `.zshrc`에 `cc`, `ccc`, `ccr`, zoxide, fzf, starship 설정 추가
-- SSH는 macOS 키체인이 자동 관리 (별도 설정 불필요)
-
-> Linux/macOS 모두 `install.sh` 한 줄로 OS를 자동 판별해 실행합니다.
-
-> 💡 **여러 번 실행해도 안전합니다 (멱등)** — 이미 설치된 도구·이미 적용된 설정은 자동으로 건너뜁니다. 설치가 중간에 끊겼거나 뭔가 꼬였다면 같은 명령을 그냥 다시 실행하세요. 직접 꾸며둔 `.zshrc`/`.bashrc`가 있어도 같은 기능은 중복 추가되지 않고 그대로 존중됩니다.
-
----
-
-## 설치 확인
-
-새 터미널을 연 뒤 아래를 실행해 보세요. 버전이 출력되면 정상입니다:
+### ③ 확인하고 로그인
 
 ```bash
-claude --version    # Claude Code (cc 별칭으로 실행)
-codex --version     # Codex CLI
-starship --version  # 프롬프트
-zoxide --version    # z 명령
-fzf --version       # Ctrl+R 히스토리 검색
+claude --version     # 버전이 나오면 성공
+claude               # 첫 실행 시 브라우저로 로그인
 ```
 
-프롬프트나 `ll` 출력의 아이콘이 □ 로 깨져 보이면 터미널 폰트가 Nerd Font가 아닌 것입니다 → [Nerd Font 안내](#-jetbrainsmono-nerd-font) 참고.
+설치가 끝나면 화면 아래에 **Claude Code 플러그인 명령**(omc 등)이 나옵니다. 로그인한 뒤 그대로 붙여넣으면 됩니다. ([전체 명령](#-claude-code-플러그인))
+
+<details>
+<summary>설치 화면은 이렇게 보입니다 (Windows)</summary>
+
+```text
+=== Packages to install  (14 / 15 selected) ===
+  Up/Down: move  |  Space: toggle  |  A: select all  |  Enter: confirm  |  Esc: cancel
+
+  > [v] Node.js LTS  JS runtime. Keep this on: the omc plugin's hooks, omx and npx-based MCP servers ...
+    [v] Git  Version control. Required for GitHub CLI and Claude Code.
+    [ ] Starship  Optional prompt (off by default). ...
+    [v] zoxide  Smart cd based on history. No need to type full path.
+    ...
+
+Starting installation...
+Checking what is already installed (one winget scan, can take a minute)...
+[1/14] Node.js LTS... [OK - already latest]
+[2/14] Git... [INSTALLED]
+...
+Installing AI CLI tools...
+[1/4] Claude Code... [OK - already installed (native, self-updating)]
+...
+All required packages installed successfully.
+```
+
+`↑↓`로 이동, `Space`로 켜고 끄기, `Enter`로 다음 단계입니다.
+
+</details>
+
+<details>
+<summary>무인 설치 · 미리 보기 · 다시 실행하기</summary>
+
+- **여러 번 실행해도 안전합니다.** 이미 설치된 도구와 이미 들어간 설정은 건너뜁니다. 설치가 끊겼거나 꼬였다면 같은 명령을 다시 실행하세요. 직접 꾸민 `.zshrc`·`.bashrc`도 중복 없이 존중합니다.
+- **무인 설치 (Windows)** — 메뉴 없이 기본 구성으로 설치:
+  ```powershell
+  $env:DEVSETUP_NONINTERACTIVE = 1
+  irm https://raw.githubusercontent.com/hd0126/dev-setup/main/install.ps1 | iex
+  ```
+- **미리 보기 (Windows)** — `$env:DEVSETUP_DRYRUN = 1`로 실행하면 아무것도 설치하지 않고 계획만 보여 줍니다.
+- **스크립트 내용을 먼저 보고 싶다면** 위 주소를 브라우저로 열어 보세요. 레포를 클론해서 `install.sh`를 실행하면 내려받지 않고 로컬 파일을 씁니다.
+- `curl`이 없는 최소 설치 Ubuntu/Debian: `sudo apt-get update && sudo apt-get install -y curl`
+- 소요 시간은 네트워크에 따라 5–15분입니다.
+
+</details>
+
+<details>
+<summary>예전 버전으로 설치했던 PC라면</summary>
+
+새 스크립트를 다시 실행하면 이렇게 정리됩니다.
+
+- **Gemini CLI**: 삭제할지 물어봅니다(기본값 N). `~/.gemini` 폴더는 Antigravity CLI가 이어서 쓰므로 그대로 둡니다.
+- **npm으로 깔린 claude·codex**: 네이티브판이 있으면 중복 사본을 지웁니다.
+- **npm판 omc**: 지우지 않고, 더 이상 업데이트하지 않는다고 알려 줍니다(플러그인 권장).
+- **Python 3.12 고정 설치**: 이미 있는 Python은 건드리지 않습니다.
+
+</details>
 
 ---
 
-## 설치 후 자동 적용되는 설정
+## ⚡ 설치 후 바로 써보기
 
-설치 스크립트가 완료되면 각 플랫폼에 아래 설정이 자동으로 적용됩니다.
+| 해보기 | 입력 | 무슨 일이 일어나나 |
+|---|---|---|
+| AI에게 일 시키기 | `claude` | 대화형으로 코드 작성·수정 |
+| 폴더 순간이동 | `z proj` | 자주 간 폴더 중 "proj"가 들어간 곳으로 |
+| 옛날에 친 명령 찾기 | `Ctrl` + `R` | 기록을 퍼지 검색해서 바로 입력 |
+| 파일 경로 넣기 | `Ctrl` + `T` | 파일을 골라 경로를 자동 입력 |
+| 폴더 보기 | `ll` / `lt` | 보기 좋은 자세한 목록 / 트리 |
+| 변경 내용 보기 | `git diff` | 색과 줄번호가 있는 diff |
+| 명령 사용법 | `tldr tar` | 자주 쓰는 예시만 짧게 |
 
-### 🪟 Windows (PowerShell)
+<details>
+<summary>전체 단축키 · 명령어 표</summary>
 
-`Microsoft.PowerShell_profile.ps1`이 `$PROFILE`에 다운로드됩니다.
+| 명령어 | 설명 |
+|--------|------|
+| `cc` | `claude --dangerously-skip-permissions` (권한 확인 없이 실행 — [주의](#-claude-code)) |
+| `ccc` | `cc --continue` (이전 대화 이어서) |
+| `ccr` | `cc --resume` (세션 복구) |
+| `z <키워드>` · `zi` | 자주 간 폴더로 이동 · fzf로 골라서 이동 |
+| `Ctrl+R` · `Ctrl+T` | 히스토리 퍼지 검색 · 파일 검색 후 경로 삽입 (fd가 있으면 .gitignore 존중) |
+| `↑ / ↓` | 입력한 내용으로 시작·포함하는 히스토리 검색 |
+| `→` | 회색 자동제안 수락 |
+| `ll` / `la` / `lt` | eza 긴 목록 / 숨김 포함 / 트리 |
+| `cat <파일>` | macOS·Linux: bat으로 하이라이트 · Windows: 원래 `cat`, 하이라이트는 `bat <파일>` |
+| `tldr <명령>` | 예시 위주 도움말 |
+| `which <명령>` · `touch <파일>` | 설치 경로 확인 · 빈 파일 생성 (Windows 프로필) |
+| `conda` | Conda 초기화 — Windows 프로필 전용 |
 
-| 기능 | 설명 |
-|------|------|
-| **PowerShell 프롬프트** | 외부 바이너리 없이 순수 PowerShell로 구현(속도 우선). `.git/HEAD`를 직접 읽어 Git 브랜치 표시, 경로 단축, 직전 명령 성공/실패에 따라 ❯ 색상 변경. (Starship은 기본 설치하지 않음 — 메뉴에서 선택 가능) |
-| **zoxide** | `z <키워드>`로 방문 기록 기반 스마트 디렉토리 이동 |
-| **fzf** | `Ctrl+R` 히스토리 검색, `Ctrl+T` 파일 검색 (fd가 있으면 fd로 더 빠르게) |
-| **eza** | `ll` · `la` · `lt`(트리) — macOS·Linux와 같은 별칭 |
-| **bat · delta · tldr** | `bat 파일`로 문법 하이라이트 보기(PowerShell 기본 `cat`은 그대로), git diff는 delta로 하이라이트(기존 pager 설정이 없을 때만), `tldr 명령`으로 예시 위주 도움말 |
-| **cc / ccc / ccr** | `cc`=`claude --dangerously-skip-permissions`, `ccc`=`cc --continue`, `ccr`=`cc --resume` (bypass permissions on) |
-| **자동제안** | PSReadLine `PredictionSource History` — 입력 중 회색 제안, `→`로 수락 (zsh-autosuggestions 대응) |
-| **SSH agent** | ssh-agent 서비스가 **이미 실행 중일 때만** `.ssh` 폴더의 키를 자동 등록(`ssh-add`). 에이전트를 직접 시작하거나 소켓을 관리하지는 않음 |
-| **프로필 로드 시간** | `PowerShell loaded in {N}ms` — 터미널 시작 시 회색으로 표시 |
+</details>
+
+---
+
+## 🧰 도구 소개
+
+> 그림은 각 도구의 공식 저장소에서 가져왔습니다. 사용법은 펼쳐서 보세요.
+
+### 🤖 AI 코딩 도구
+
+#### 🟠 Claude Code
+
+Anthropic의 AI 코딩 에이전트. 터미널에서 말로 코드 작성·수정·디버깅·리뷰를 맡깁니다. 네이티브 설치판이라 Node 없이 실행되고 백그라운드에서 자동 업데이트됩니다. ▶️ [공식 데모 GIF 보기](https://github.com/anthropics/claude-code/blob/main/demo.gif)
+
+```text
+$ claude
+> 이 함수에 테스트를 작성해줘
+● tests/test_parser.py 를 만들고 경계값 케이스 6개를 추가했습니다. 실행해 볼까요?   (실행 예시)
+```
+
+> ⚠️ **`cc`는 확인 없이 실행합니다.** `cc` = `claude --dangerously-skip-permissions`라 파일 삭제·명령 실행을 묻지 않습니다. 처음 배우는 동안이나 중요한 데이터가 있는 곳에서는 `claude`를 쓰세요.
+
+<details>
+<summary>사용법 · 수동 설치</summary>
+
+```bash
+claude                     # 확인을 받으며 실행 (권장)
+cc                         # 확인 없이 실행
+ccc                        # 이전 대화 이어서 (--continue)
+ccr                        # 중단된 세션 복구 (--resume)
+cc '버그 찾아서 고쳐줘'      # 한 줄로 시키기
+```
+
+수동 설치:
 
 ```powershell
-# 새 도구를 직접 설치한 뒤 바로 반영하려면 (install.ps1로 설치했다면 자동)
-Remove-Item ([IO.Path]::GetFullPath("$env:TEMP\pwsh_profile_cache.ps1"))
+irm https://claude.ai/install.ps1 | iex          # Windows
 ```
-
----
-
-### 🐧 Linux / WSL (bash/zsh)
-
-`.bashrc` 또는 `.zshrc` 끝에 아래 설정 블록이 추가됩니다.
-
-| 기능 | 설명 |
-|------|------|
-| **Starship 프롬프트** | Git 브랜치·언어 버전 자동 표시. init 결과 캐시(`~/.cache/starship_init_*.sh`)로 로드 속도 향상 |
-| **zoxide** | `z <키워드>`로 스마트 디렉토리 이동 |
-| **fzf** | `Ctrl+R` 히스토리 검색, `Ctrl+T` 파일 검색 |
-| **cc / ccc / ccr** | `cc`=`claude --dangerously-skip-permissions`, `ccc`=`cc --continue`, `ccr`=`cc --resume` (bypass permissions on) |
-| **자동제안·색상** (zsh) | zsh-autosuggestions(회색 제안, `→`로 수락) + zsh-syntax-highlighting(유효=초록/오타=빨강) |
-| **ll / la / lt** | eza 기반 ls 대체 (긴 목록·전체·트리) |
-| **cat** | bat 문법 하이라이트 (Ubuntu `batcat` 자동 처리) |
-| **Ctrl+T 가속** | fzf 파일검색이 fd 기반으로 동작 (.gitignore 존중, Ubuntu `fdfind` 자동 처리) |
-| **git diff** | delta 하이라이트 (기존 pager 설정이 없을 때만 적용) |
-| **npm 전역 경로** | `~/.npm-global/bin`을 PATH에 추가 (sudo 없이 설치한 전역 CLI 실행) |
-| **SSH agent** | 에이전트 자동 시작·재사용(`~/.ssh/agent.env`) + `.ssh`의 첫 개인키 자동 등록. 개인키가 없으면 아무것도 하지 않음 |
-| **셸 로드 시간** | `[shell] loaded in Xms` — 터미널 시작 시 표시 |
 
 ```bash
-# Starship 캐시 초기화
-rm ~/.cache/starship_init_bash.sh   # bash
-rm ~/.cache/starship_init_zsh.zsh   # zsh
+curl -fsSL https://claude.ai/install.sh | bash   # macOS · Linux
 ```
 
----
+mac/Linux에서 `cc`는 원래 C 컴파일러 명령입니다. 별칭이 대화형 셸에서 컴파일러를 가리므로, 필요하면 `command cc`나 `/usr/bin/cc`를 쓰세요(스크립트·Makefile은 영향 없음). 이미 `alias cc=...`를 직접 정의해 두었다면 덮어쓰지 않습니다.
 
-### 🍎 macOS (zsh)
+</details>
 
-`.zshrc` 끝에 아래 설정 블록이 추가됩니다.
+#### 🔵 Codex CLI
 
-| 기능 | 설명 |
-|------|------|
-| **Starship 프롬프트** | Git 브랜치·언어 버전 자동 표시. init 캐시(`~/.cache/starship_init_zsh.zsh`) 사용 |
-| **zoxide** | `z <키워드>`로 스마트 디렉토리 이동 |
-| **fzf** | `Ctrl+R` 히스토리 검색, `Ctrl+T` 파일 검색 |
-| **cc / ccc / ccr** | `cc`=`claude --dangerously-skip-permissions`, `ccc`=`cc --continue`, `ccr`=`cc --resume` (bypass permissions on) |
-| **자동제안·색상** | zsh-autosuggestions(회색 제안, `→`로 수락) + zsh-syntax-highlighting(유효=초록/오타=빨강) + history-substring-search(↑↓ 부분일치 검색) |
-| **ll / la / lt** | eza 기반 ls 대체 (아이콘·긴 목록·전체·트리) |
-| **cat** | bat 문법 하이라이트 |
-| **Ctrl+T 가속** | fzf 파일검색이 fd 기반으로 동작 (.gitignore 존중) |
-| **git diff** | delta 하이라이트 (기존 pager 설정이 없을 때만 적용) |
-| **Homebrew** | `shellenv` 자동 적용 — Apple Silicon(`/opt/homebrew`)·Intel(`/usr/local`) 모두 지원 (node·npm 전역 CLI 포함) |
-| **셸 로드 시간** | `[shell] loaded in Xms` — 터미널 시작 시 표시 |
-| **SSH agent** | macOS 키체인이 자동 관리 — 별도 설정 불필요 |
+OpenAI의 코딩 에이전트. 네이티브 설치판(Node 불필요, 자동 업데이트). 첫 실행 때 `codex login`.
+
+<img src="https://raw.githubusercontent.com/openai/codex/main/.github/codex-cli-splash.png" alt="Codex CLI" width="640">
+
+<details>
+<summary>사용법 · 수동 설치 · 설치 오류</summary>
 
 ```bash
-# Starship 캐시 초기화
-rm ~/.cache/starship_init_zsh.zsh
+codex                    # 대화형 실행
+codex '테스트 작성해줘'    # 한 줄로 시키기
+codex login              # OpenAI 계정 로그인
 ```
-
----
-
-## 이미 설치된 경우 (설정만 추가)
-
-**가장 쉬운 방법은 [처음 설치](#처음-설치-신규)의 설치 명령을 그대로 다시 실행하는 것입니다** — 이미 설치된 도구는 건너뛰고 빠진 설정 블록만 추가되며, 직접 꾸며둔 설정과 중복되지 않습니다.
-
-스크립트 실행 없이 수동으로 붙여넣고 싶은 경우에만 아래 블록을 사용하세요.
-
-### 🪟 Windows (PowerShell)
-
-PowerShell 프로필을 직접 덮어씁니다 (기존 프로필은 타임스탬프 백업됨):
-
-> ⚠️ **반드시 `pwsh`(PowerShell 7)에서 실행하세요.** 이 프로필은 pwsh 7 전용 문법(`??` 등)을 사용합니다 — 파란 창의 Windows PowerShell 5.1에서 실행하면 5.1 프로필 위치에 저장되어 5.1이 시작될 때마다 에러가 납니다.
 
 ```powershell
-# 프로필만 다운로드 (pwsh 7에서 실행)
-$profileUrl = "https://raw.githubusercontent.com/hd0126/dev-setup/main/Microsoft.PowerShell_profile.ps1"
-New-Item -ItemType Directory -Force -Path (Split-Path $PROFILE) | Out-Null
-if (Test-Path $PROFILE) { Copy-Item $PROFILE "$PROFILE.$(Get-Date -Format 'yyyyMMdd_HHmmss').bak" }
-Invoke-WebRequest -Uri $profileUrl -OutFile $PROFILE
+irm https://chatgpt.com/codex/install.ps1 | iex      # Windows
 ```
-
-> 아래 블록은 **핵심 설정만 담은 축약본**입니다 (쾌적함 도구 — zsh 플러그인·eza·bat·fd 배선 — 은 제외). 전체 설정은 설치 스크립트 재실행이 가장 정확하고, 이미 있는 항목은 건너뛰므로 안전합니다.
-
-### 🐧 bash 사용자
-
-`.bashrc` 끝에 아래 블록을 추가하세요:
 
 ```bash
-cat >> ~/.bashrc << 'EOF'
-# ── Shell startup timer ───────────────────────────────────
-_shell_start=$(date +%s%3N)
-
-# ── Claude Code shortcuts ──────────────────────────────────
-alias cc='claude --dangerously-skip-permissions'
-alias ccc='cc --continue'
-alias ccr='cc --resume'
-
-# ── PATH (npm 전역 · uv/네이티브 인스톨러) — 도구 init보다 먼저 ──
-case ":$PATH:" in *":$HOME/.npm-global/bin:"*) ;; *) export PATH="$HOME/.npm-global/bin:$PATH" ;; esac
-case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
-
-# ── zoxide ────────────────────────────────────────────────
-if command -v zoxide &>/dev/null; then
-    eval "$(zoxide init bash --cmd z)"
-fi
-
-# ── fzf ───────────────────────────────────────────────────
-if command -v fzf &>/dev/null; then
-    if fzf --bash &>/dev/null; then
-        eval "$(fzf --bash)"
-    elif [ -f /usr/share/doc/fzf/examples/key-bindings.bash ]; then
-        # 구버전 fzf(<0.48, apt 기본)는 --bash 미지원 → 배포판 키바인딩 파일 사용
-        source /usr/share/doc/fzf/examples/key-bindings.bash
-    fi
-fi
-
-# ── Starship prompt (cached) ──────────────────────────────
-if command -v starship &>/dev/null; then
-    _starship_cache="${XDG_CACHE_HOME:-$HOME/.cache}/starship_init_bash.sh"
-    if [ ! -f "$_starship_cache" ]; then
-        mkdir -p "$(dirname "$_starship_cache")"
-        starship init bash > "$_starship_cache"
-    fi
-    source "$_starship_cache"
-fi
-
-# ── Startup time ──────────────────────────────────────────
-if [ -n "$_shell_start" ]; then
-    printf '\033[0;36m[shell] loaded in %dms\033[0m\n' "$(( $(date +%s%3N) - _shell_start ))"
-    unset _shell_start
-fi
-EOF
+curl -fsSL https://chatgpt.com/codex/install.sh | sh  # macOS · Linux
 ```
 
-### 🐧🍎 zsh 사용자 (Linux / WSL · macOS)
+⚠️ Windows에서 `tar: Cannot connect to C:` 오류가 나면 PATH 앞쪽의 Git용 `tar`(`...\Git\usr\bin`)가 Windows 경로를 원격 주소로 오해한 것입니다. `where.exe tar`로 확인하고, `C:\Windows\System32\tar.exe`가 먼저 잡히는 일반 PowerShell 창에서 다시 실행하세요.
 
-`.zshrc` **최상단**에 타이머 시작을 삽입하고, 끝에 아래 블록을 추가하세요:
+</details>
 
-> `_shell_start=$EPOCHREALTIME` 은 파일 맨 위에 있어야 전체 로드 시간이 측정됩니다.
+#### 💎 Antigravity CLI (`agy`)
+
+Google의 터미널 코딩 에이전트이자 **Gemini CLI의 후속**. 네이티브 설치판(Node 불필요, 자동 업데이트). 첫 실행 때 브라우저로 Google 로그인.
+
+<img src="https://raw.githubusercontent.com/google-antigravity/antigravity-cli/main/agy-cli-demo.gif" alt="Antigravity CLI demo" width="640">
+
+<details>
+<summary>사용법 · 수동 설치 · Gemini CLI를 쓰던 분께</summary>
 
 ```bash
-# 1) .zshrc 최상단에 타이머 시작 삽입 (macOS BSD sed는 치환문 \n을 못 쓰므로 printf 방식 — GNU/BSD 공통)
-printf 'zmodload zsh/datetime\n_shell_start=$EPOCHREALTIME\n' | cat - ~/.zshrc > ~/.zshrc.new && mv ~/.zshrc.new ~/.zshrc
-
-# 2) 설정 블록을 .zshrc 끝에 추가
-cat >> ~/.zshrc << 'EOF'
-# ── Claude Code shortcuts ──────────────────────────────────
-alias cc='claude --dangerously-skip-permissions'
-alias ccc='cc --continue'
-alias ccr='cc --resume'
-
-# ── PATH (npm 전역 · uv/네이티브 인스톨러) — 도구 init보다 먼저 ──
-case ":$PATH:" in *":$HOME/.npm-global/bin:"*) ;; *) export PATH="$HOME/.npm-global/bin:$PATH" ;; esac
-case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
-
-# ── zoxide ────────────────────────────────────────────────
-if command -v zoxide &>/dev/null; then
-    eval "$(zoxide init zsh --cmd z)"
-fi
-
-# ── fzf ───────────────────────────────────────────────────
-if command -v fzf &>/dev/null; then
-    if fzf --zsh &>/dev/null; then
-        source <(fzf --zsh)
-    elif [ -f /usr/share/doc/fzf/examples/key-bindings.zsh ]; then
-        # 구버전 fzf(<0.48, apt 기본)는 --zsh 미지원 → 배포판 키바인딩 파일 사용
-        source /usr/share/doc/fzf/examples/key-bindings.zsh
-    fi
-fi
-
-# ── Starship prompt (cached) ──────────────────────────────
-if command -v starship &>/dev/null; then
-    _starship_cache="${XDG_CACHE_HOME:-$HOME/.cache}/starship_init_zsh.zsh"
-    if [ ! -f "$_starship_cache" ]; then
-        mkdir -p "$(dirname "$_starship_cache")"
-        starship init zsh > "$_starship_cache"
-    fi
-    source "$_starship_cache"
-fi
-
-# ── Startup time ──────────────────────────────────────────
-if [ -n "$_shell_start" ]; then
-    printf '\033[0;36m[shell] loaded in %.0fms\033[0m\n' "$(( (EPOCHREALTIME - _shell_start) * 1000 ))"
-    unset _shell_start
-fi
-EOF
+agy                      # 대화형 실행 (첫 실행 시 로그인)
+agy plugin import gemini # Gemini CLI 확장을 Antigravity 플러그인으로 옮기기
 ```
 
-적용 후 새 터미널을 열거나 `source ~/.bashrc` / `source ~/.zshrc` 를 실행하세요.
-
----
-
-## 설치 도구 소개
-
-### ⚡ PowerShell 7
-Windows 기본 PowerShell 5.1의 최신 크로스플랫폼 후속작. 이 프로필은 pwsh 7 기준으로 동작합니다.
 ```powershell
-pwsh --version
-# PowerShell 7.x.x
+irm https://antigravity.google/cli/install.ps1 | iex           # Windows
 ```
+
+```bash
+curl -fsSL https://antigravity.google/cli/install.sh | bash    # macOS · Linux
+```
+
+Google은 2026-06-18부터 무료·AI Pro·Ultra 계정의 Gemini CLI 요청을 받지 않습니다(유료 API 키·기업 라이선스만 유지). 그래서 이 스크립트는 Gemini CLI를 더 이상 설치하지 않고, 예전에 깔린 것은 [다시 실행할 때 지울지 물어봅니다](#-설치-3단계). 자세한 이전 방법은 [공식 마이그레이션 안내](https://antigravity.google/docs/gcli-migration)를 보세요.
+
+</details>
+
+#### 🧩 omc · omx
+
+| | oh-my-claudecode (omc) | oh-my-codex (omx) |
+|---|---|---|
+| | <img src="https://raw.githubusercontent.com/Yeachan-Heo/oh-my-claudecode/main/assets/omc-character.jpg" alt="omc" width="160"> | <img src="https://yeachan-heo.github.io/oh-my-codex-website/omx-character-nobg.png" alt="omx" width="160"> |
+| 대상 | Claude Code | Codex CLI |
+| 하는 일 | 계획·실행·리뷰 에이전트를 자동으로 나눠 맡기는 멀티에이전트 레이어 | 명확화→계획→실행 워크플로 레이어 |
+| 설치 | Claude Code **플러그인** (설치 끝에 명령 안내) | npm (`oh-my-codex`) |
+| 써보기 | 세션 안에서 `/omc-setup` → `/autopilot "..."` | `omx setup` → `omx` |
+| 링크 | [GitHub](https://github.com/Yeachan-Heo/oh-my-claudecode) | [GitHub](https://github.com/Yeachan-Heo/oh-my-codex) |
+
+<details>
+<summary>주요 명령 · 참고 사항</summary>
+
+```bash
+# Claude Code 세션 안 (omc)
+/omc-setup                      # 초기 설정 (HUD·훅)
+/autopilot "REST API 만들어줘"  # 계획→구현→검증 자율 실행
+/ralph "승인된 계획 완료까지"    # 완료될 때까지 반복
+/team                           # 멀티에이전트 팀
+
+# 터미널 (omx)
+omx setup                       # 초기 설정
+omx doctor                      # 설치 상태 확인
+omx --madmax --high             # 기본 실행
+```
+
+- omc 플러그인의 훅과 MCP 서버는 **Node로 실행**됩니다. Node.js를 끄면 조용히 동작하지 않습니다.
+- 터미널에서 `omc` 셸 명령도 쓰고 싶다면 npm판(`npm i -g oh-my-claude-sisyphus@latest`)을 따로 설치할 수 있습니다. Windows에서는 C++ 빌드툴이 필요해 실패할 수 있습니다.
+- omx는 macOS·Linux에 맞춰져 있고 **네이티브 Windows 지원은 실험적**입니다(WSL2 권장).
+
+</details>
 
 ---
 
-### 🚀 Starship
-Git 브랜치, 언어 버전, 오류 상태 등을 프롬프트에 자동 표시하는 빠른 커스텀 프롬프트.
+### 🐚 터미널을 편하게
 
-![Starship demo](https://raw.githubusercontent.com/starship/starship/main/media/demo.gif)
+#### 📁 zoxide
 
-- **macOS · Linux**: 자동 설치되고 zsh/bash 프롬프트로 바로 사용됩니다.
-- **Windows**: 메뉴에서 **기본 해제**입니다(선택하면 winget으로 설치). Windows 프로필은 속도를 위해 순수 PowerShell 프롬프트를 씁니다. Starship을 이 프로필에서 쓰려면 메뉴에서 선택해 설치한 뒤 `$PROFILE` 끝에 init 한 줄을 추가하세요:
+방문 기록을 학습해서 짧은 키워드만으로 폴더를 이동하는 똑똑한 `cd`.
+
+<img src="https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/contrib/tutorial.gif" alt="zoxide demo" width="640">
+
+<details>
+<summary>사용법</summary>
+
+```text
+z proj            # "proj"가 들어간, 가장 자주 간 폴더로
+z my project      # 키워드 여러 개
+z ..              # 상위 폴더
+z -               # 직전 폴더
+zi                # fzf 화면에서 골라서 이동
+```
+
+</details>
+
+#### 🔍 fzf
+
+목록에서 오타가 있어도 비슷하면 찾아 주는 **퍼지 검색** UI. 명령 기록(`Ctrl+R`)과 파일(`Ctrl+T`)에 연결돼 있습니다. 예: `dcmnts` → `Documents`
+
+<img src="https://raw.githubusercontent.com/junegunn/i/master/fzf-preview.png" alt="fzf preview" width="640">
+
+<details>
+<summary>사용법</summary>
+
+```text
+Ctrl+R   이전 명령 검색 (치는 대로 실시간 필터)
+Ctrl+T   파일 검색 → 고르면 경로가 입력됨
+Alt+C    폴더를 골라 바로 이동 (macOS·Linux 전용. macOS 기본 터미널은 Option을 Meta로 설정해야 함)
+```
+
+```bash
+code "$(fzf)"                 # 파일 골라서 열기 (macOS·Linux)
+fzf --preview 'cat {}'        # 미리보기 창
+```
+
+```powershell
+# Windows — 프로세스 골라서 종료
+Get-Process | ForEach-Object { "$($_.Id) $($_.ProcessName)" } | fzf | ForEach-Object { Stop-Process -Id ($_ -split ' ')[0] }
+```
+
+</details>
+
+#### 🎨 프롬프트
+
+현재 폴더·Git 브랜치·직전 명령 성공(초록 `❯`)/실패(빨강 `❯`)를 보여 줍니다.
+
+| 🍎 macOS · 🐧 Linux — Starship | 🪟 Windows — 순수 PowerShell 프롬프트 |
+|---|---|
+| <img src="https://raw.githubusercontent.com/starship/starship/main/media/demo.gif" alt="Starship demo" width="400"> | <pre>…\GitHub\dev-setup on main<br>❯ git status</pre>외부 프로그램을 실행하지 않아 Enter마다 빠릅니다. |
+
+<details>
+<summary>Windows에서 Starship을 쓰고 싶다면 · 설정 바꾸기</summary>
+
+Windows 메뉴에서 Starship을 켜서 설치한 뒤 프로필에 한 줄을 추가하세요.
 
 ```powershell
 'Invoke-Expression (&starship init powershell)' | Add-Content $PROFILE
 ```
 
-설정 커스터마이징 (프리셋: https://starship.rs/presets/):
+Windows에서 Starship은 **Enter마다 외부 exe를 실행**합니다. 실시간 백신 검사가 있는 PC에서 재 보니 프롬프트 1회에 1.6~2.0초(순수 PS 프롬프트는 17~103ms)였습니다. PC마다 다르지만 그래서 기본값은 순수 PS 프롬프트입니다.
 
-```powershell
-code ~/.config/starship.toml
+Starship 설정: `~/.config/starship.toml` ([프리셋 모음](https://starship.rs/presets/))
+
+</details>
+
+#### 🧩 zsh 플러그인
+
+macOS·Linux의 zsh에서 입력을 도와주는 플러그인 3종입니다. Windows는 PowerShell 내장 예측이 회색 제안을 대신합니다.
+
+| 자동제안 (zsh-autosuggestions) | 오타 색상 (zsh-syntax-highlighting) |
+|---|---|
+| <img src="https://asciinema.org/a/37390.png" alt="zsh-autosuggestions" width="380"> | <img src="https://raw.githubusercontent.com/zsh-users/zsh-syntax-highlighting/master/images/before1-smaller.png" alt="before" height="28"> → <img src="https://raw.githubusercontent.com/zsh-users/zsh-syntax-highlighting/master/images/after1-smaller.png" alt="after" height="28"> |
+| 기록을 보고 회색으로 제안, `→`로 수락 | 맞는 명령은 초록, 오타는 빨강 |
+
+**↑↓ 부분 검색 (zsh-history-substring-search)** — 입력한 단어가 **들어간** 기록만 위아래로 넘깁니다.
+
+```text
+$ git▮          ← "git"까지 치고 ↑
+$ git commit -m "fix: typo"     (git이 들어간 직전 명령)
+$ git push origin main          (↑ 한 번 더)
 ```
 
-> 참고: Windows에서 Starship은 새 터미널마다 init 고정비(~수백 ms)가 들고, **Enter를 칠 때마다** 외부 exe를 실행합니다. 실시간 백신 검사가 있는 PC에서 재보니 프롬프트 1회에 1.6~2.0초가 걸렸습니다(순수 PS 프롬프트는 17~103ms). PC마다 다르지만, 그래서 Windows 기본값은 순수 PS 프롬프트입니다.
+<details>
+<summary>설치 방식</summary>
+
+- macOS: Homebrew로 설치합니다.
+- Linux: 자동제안·색상은 apt로, 부분 검색은 apt 패키지가 없어 공식 저장소를 `~/.zsh`로 `git clone`합니다.
+
+</details>
 
 ---
 
-### 📁 zoxide
-방문 기록을 학습해서 짧은 키워드만으로 디렉토리를 이동하는 스마트 cd.
+### 🔎 찾고 · 보기 좋게
 
-![zoxide demo](https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/contrib/tutorial.webp)
+#### 🔎 ripgrep
 
-```
-z proj            # "proj"가 포함된 가장 자주 간 폴더로 이동
-z my project      # 여러 키워드 동시 매칭
-z ..              # 상위 폴더로 이동
-z -               # 바로 직전 폴더로 이동
-zi                # fzf UI로 방문 기록에서 선택해서 이동
-```
+파일 **안의 내용**을 검색합니다. `grep`보다 훨씬 빠르고 `.gitignore`를 알아서 따릅니다. (fzf는 목록에서 고르는 도구, ripgrep은 내용을 찾는 도구)
 
----
+<img src="https://burntsushi.net/stuff/ripgrep1.png" alt="ripgrep" width="640">
 
-### 🔍 fzf
-터미널에서 파일·히스토리·프로세스 등을 인터랙티브하게 검색하는 도구.
-**퍼지(fuzzy) 검색** = 오타가 있어도 비슷하면 찾아줌. 예: `dcmnts` → `Documents`
+<details>
+<summary>사용법</summary>
 
-![fzf preview](https://raw.githubusercontent.com/junegunn/i/master/fzf-preview.png)
-
-```
-Ctrl+R      이전에 실행한 명령어 검색 (타이핑하면 실시간 필터링)
-Ctrl+T      현재 폴더 파일 검색 → 선택하면 경로가 자동 입력됨
-Alt+C       폴더 목록에서 선택해서 바로 이동 (mac/Linux 전용 — Windows 프로필엔 미바인딩,
-            macOS 기본 터미널은 설정에서 Option키를 Meta로 바꿔야 동작)
-```
-
-```bash
-# mac / Linux — 파일 선택해서 바로 열기
-vim "$(fzf)"
-code "$(fzf)"
-
-# 미리보기 창 띄우기
-fzf --preview 'cat {}'
-```
-
-```powershell
-# Windows — 프로세스 선택해서 종료 (fzf는 문자열을 돌려주므로 Id를 뽑아서 전달)
-Get-Process | ForEach-Object { "$($_.Id) $($_.ProcessName)" } | fzf | ForEach-Object { Stop-Process -Id ($_ -split ' ')[0] }
-```
-
----
-
-### 🔤 JetBrainsMono Nerd Font
-Starship 프롬프트·eza의 아이콘(Git 브랜치, 폴더 등)이 □ 로 깨지지 않으려면 Nerd Font가 필요합니다.
-
-- **Windows**: `install.ps1`에서 기본 설치 + Windows Terminal·예전 콘솔 창 기본 폰트 자동 설정. Starship을 쓰지 않아도 필요합니다 — 예전 콘솔 창(conhost)의 기본 폰트 Consolas에는 프롬프트 화살표 `❯` 글리프가 없어 □로 깨집니다(Windows Terminal 기본 폰트 Cascadia Mono에는 있음).
-- **macOS**: `setup-mac.sh`가 자동 설치. 설치 후 **터미널 앱 설정에서 폰트를 `JetBrainsMono Nerd Font`로 직접 변경**해야 적용됩니다 (Terminal.app / iTerm2 / Ghostty 공통)
-- **Linux**: 수동 설치 — [nerdfonts.com](https://www.nerdfonts.com/font-downloads)에서 JetBrainsMono 다운로드 → `~/.local/share/fonts`에 압축 해제 → `fc-cache -f` 실행 → 터미널 폰트 변경
-
-> VS Code 등 다른 앱은 설정에서 직접 `JetBrainsMono Nerd Font`로 변경해야 합니다.
-
----
-
-### 🔎 ripgrep
-코드에서 특정 단어·함수명을 빠르게 찾는 검색 도구. `grep`보다 수십 배 빠르고 `.gitignore`를 자동으로 적용해 불필요한 파일은 건너뜁니다.
-
-> **fzf와 차이**: fzf는 파일 이름·히스토리 목록에서 고르는 UI 도구, ripgrep은 파일 **안의 내용**을 검색하는 도구. 코딩을 하지 않는다면 생략해도 됩니다.
-
-![ripgrep demo](https://burntsushi.net/stuff/ripgrep1.png)
-
-```
-rg "function"           # 현재 디렉토리 전체에서 검색
-rg "TODO" src/          # 특정 폴더만 검색
+```text
+rg "function"           # 현재 폴더 전체에서
+rg "TODO" src/          # 특정 폴더만
 rg -i "error"           # 대소문자 무시
-rg -w "main"            # 단어 단위로 정확히 매칭 ("mainly" 제외)
-rg -t py "import"       # Python 파일만 검색
-rg -t js "console.log"  # JS 파일만 검색
-rg -n "def "            # 줄 번호 표시
-rg -C 3 "catch"         # 검색 결과 앞뒤 3줄씩 같이 표시
-rg -l "TODO"            # 파일 이름만 출력 (내용 말고)
+rg -w "main"            # 단어 단위 ("mainly" 제외)
+rg -t py "import"       # Python 파일만
+rg -C 3 "catch"         # 앞뒤 3줄 함께
+rg -l "TODO"            # 파일 이름만
 ```
 
----
+</details>
 
-### ✨ 쾌적함 플러스 도구
+#### 🗂️ fd
 
-전부 셸 시작속도 영향이 거의 0인 가벼운 도구들입니다. **설치돼 있을 때만 활성화**되므로 일부가 없어도(구버전 Ubuntu 등) 에러 없이 그냥 건너뜁니다.
+파일 **이름**으로 찾는 빠른 `find`. fzf의 `Ctrl+T`도 fd로 돌아가 `.gitignore`를 존중합니다.
 
-| 도구 | 하는 일 | 써보기 |
-|------|---------|--------|
-| **zsh-autosuggestions** | 히스토리 기반 회색 자동제안 | 타이핑 중 `→` 키로 수락 |
-| **zsh-syntax-highlighting** | 명령이 유효하면 초록, 오타면 빨강 | 입력만 하면 자동 |
-| **zsh-history-substring-search** | 입력한 단어가 **포함된** 히스토리를 ↑↓로 탐색 (macOS · Linux) | `git` 입력 후 `↑` |
-| **eza** | `ls` 대체 — 아이콘·git 상태 표시 | `ll`, `la`, `lt`(트리) |
-| **bat** | `cat` 대체 — 문법 하이라이트·줄번호 | `cat 파일.py` |
-| **fd** | `find` 대체 — fzf `Ctrl+T`의 파일 소스로 자동 연동 | `fd 검색어` (Ubuntu는 `fdfind 검색어`) |
-| **git-delta** | `git diff`를 문법 하이라이트로 (pager 자동 설정) | `git diff` |
-| **tealdeer** | `man` 대신 실전 예시 위주 도움말 | `tldr tar` |
+<img src="https://raw.githubusercontent.com/sharkdp/fd/master/doc/screencast.svg" alt="fd demo" width="640">
 
-> Ubuntu에서는 패키지 사정상 `bat`→`batcat`, `fd`→`fdfind` 명령명이지만 alias(`cat`)와 fzf 연동은 자동으로 처리됩니다. Windows는 PSReadLine 내장 예측이 zsh-autosuggestions 역할을 대신합니다.
->
-> git-delta는 **git pager 설정이 없을 때만** `~/.gitconfig`에 적용됩니다. 되돌리려면: `git config --global --unset core.pager && git config --global --unset interactive.diffFilter`
+<details>
+<summary>사용법</summary>
 
----
-
-### 🤖 Claude Code
-Anthropic의 AI 코딩 CLI. 터미널에서 자연어로 코드 작성·수정·디버깅·리뷰. 네이티브 인스톨러로 설치되며 백그라운드 자동 업데이트(Anthropic 권장).
-
-네이티브 인스톨러로 설치 (설치 스크립트가 자동 실행 — 수동 설치 시):
-
-```powershell
-irm https://claude.ai/install.ps1 | iex
+```text
+fd config          # 이름에 config가 들어간 파일
+fd -e md           # 확장자가 .md인 파일
+fd -H env          # 숨김 파일 포함
 ```
+
+Ubuntu에서는 명령 이름이 `fdfind`입니다(fzf 연동은 자동 처리).
+
+</details>
+
+#### 📋 eza
+
+색깔·Git 상태를 보여 주는 `ls`. `ll`(자세히) · `la`(숨김 포함) · `lt`(트리) 별칭이 들어갑니다. 아이콘은 macOS에서 켜져 있습니다(Nerd Font 필요).
+
+<img src="https://raw.githubusercontent.com/eza-community/eza/main/docs/images/screenshots.png" alt="eza" width="640">
+
+#### 🦇 bat
+
+문법 색상과 줄 번호가 있는 `cat`. macOS·Linux에서는 `cat`이 bat으로 바뀌고, Windows에서는 `bat 파일`로 실행합니다.
+
+<img src="https://i.imgur.com/rGsdnDe.png" alt="bat" width="640">
+
+#### 🔀 delta
+
+`git diff`를 색깔·줄 번호·단어 단위 강조로 보여 줍니다. git pager 설정이 **없을 때만** 자동 적용합니다.
+
+<img src="https://user-images.githubusercontent.com/52205/147996902-9829bd3f-cd33-466e-833e-49a6f3ebd623.png" alt="delta" width="640">
+
+<details>
+<summary>되돌리기</summary>
 
 ```bash
-curl -fsSL https://claude.ai/install.sh | bash
+git config --global --unset core.pager
+git config --global --unset interactive.diffFilter
 ```
 
-`cc`는 `claude --dangerously-skip-permissions`의 alias로, 권한 확인 없이 파일 읽기·쓰기·명령 실행을 자동 승인합니다 (bypass permissions on).
+</details>
 
-> ⚠️ **`cc`는 편리하지만 위험을 감수하는 모드입니다.** Claude가 파일 삭제·수정·임의 명령 실행을 **묻지 않고** 수행합니다. 신뢰할 수 있는 내 프로젝트 폴더에서만 쓰고, 처음 배우는 동안이나 중요한 데이터가 있는 곳에서는 확인을 받는 `claude`를 쓰세요.
->
-> 참고: mac/Linux에서 `cc`는 원래 C 컴파일러 명령입니다. 이 alias가 대화형 셸에서 컴파일러를 가리므로, C 컴파일이 필요하면 `command cc` 또는 `/usr/bin/cc`를 사용하세요 (셸 스크립트/Makefile은 alias의 영향을 받지 않아 그대로 동작합니다).
+#### 📖 tldr
 
-```bash
-cc                     # claude --dangerously-skip-permissions (bypass permissions on)
-ccc                    # 이전 대화 이어서 (--continue)
-ccr                    # 중단된 세션 복구 (--resume)
+`man` 대신 자주 쓰는 예시만 보여 주는 도움말 (tealdeer).
 
-# 사용 예시
-cc '이 함수 테스트 작성해줘'
-cc '버그 찾아서 고쳐줘'
-cc '이 코드 리뷰해줘'
-```
-
-> `--dangerously-skip-permissions` 없이 실행하려면 `claude` 명령을 직접 사용하세요.
+<img src="https://raw.githubusercontent.com/tealdeer-rs/tealdeer/main/docs/src/screenshot-default.png" alt="tldr" width="640">
 
 ---
 
-### 🟩 Node.js LTS
-JavaScript 런타임. **끄지 마세요.** Claude Code · codex · Antigravity CLI 본체는 네이티브라 Node 없이 실행되지만, 아래는 Node가 있어야 동작합니다.
-- **omc 플러그인**: 훅과 MCP 서버를 모두 `node`로 실행합니다(Node가 없으면 설치돼도 조용히 동작하지 않음)
-- **omx**(`npm install -g`)
+### 🧱 기본기
+
+#### 🐙 Git · GitHub CLI
+
+Git은 버전 관리, GitHub CLI(`gh`)는 터미널에서 PR·이슈를 다룹니다. 둘은 별개의 도구가 아니라 GitHub CLI의 명령 이름이 `gh`입니다.
+
+<img src="https://user-images.githubusercontent.com/98482/84171218-327e7a80-aa40-11ea-8cd1-5177fc2d0e72.png" alt="gh pr status" width="640">
+
+<details>
+<summary>자주 쓰는 명령</summary>
+
+```text
+git clone <repo>  ·  git commit -m "메시지"  ·  git push
+gh auth login     ·  gh pr create            ·  gh issue list
+```
+
+</details>
+
+#### 🟩 Node.js LTS
+
+**끄지 마세요.** Claude Code·Codex·Antigravity 본체는 Node 없이 돌아가지만, 아래는 Node가 있어야 동작합니다.
+
+- **omc 플러그인** — 훅과 MCP 서버를 `node`로 실행 (없으면 조용히 동작 안 함)
+- **omx** — npm으로 설치
 - `npx`로 실행하는 MCP 서버들
 
-Windows 메뉴에서 Node를 해제하고 PC에도 Node가 없으면 경고를 출력합니다.
+Windows 메뉴에서 Node를 끄고 PC에도 없으면 경고를 보여 줍니다.
 
-```
-node --version
-npm install -g <패키지>
-```
+#### 🐍 uv + Python
 
----
+**uv**가 최신 안정판 Python을 직접 설치·관리합니다(버전을 고정하지 않아 스크립트가 낡지 않음). pip·venv를 대신하는 아주 빠른 패키지 관리자입니다.
 
-### 🐍 Python
-범용 프로그래밍 언어. 데이터 분석·자동화·AI 개발에 널리 사용. 세 OS 모두 **uv가 최신 안정판 Python을 직접 설치·관리**합니다 (`uv python install --default` — 특정 버전을 고정하지 않으므로 스크립트가 낡지 않습니다).
+<img src="https://github.com/astral-sh/uv/assets/1309177/629e59c0-9c6e-4013-9ad4-adb2bcf5080d" alt="uv benchmark" width="560">
 
-- 실행 파일은 `~/.local/bin`(Windows: `%USERPROFILE%\.local\bin`)에 `python` · `python3` · `python3.x`로 놓입니다.
-- **기존 Python 환경은 건드리지 않습니다** (기본 `python`이 말없이 바뀌어 기존 환경이 깨지는 것을 방지):
-  - **Windows**: 이미 다른 Python이 PATH에 있으면(Microsoft Store판 포함) uv 설치를 건너뛰고 그대로 둡니다.
-  - **Linux / macOS**: `python3`가 시스템 기본(`/usr/bin`)이 아닌 곳에서 잡히거나(pyenv · conda · brew python 등) `pip --user`로 깐 패키지가 있으면, 최신 Python은 `python3.x` 버전 명령으로만 설치하고 기본 `python3`는 그대로 둡니다.
-  - 이 경우 최신 Python은 `uv run python`으로 실행하고, 기본값으로 바꾸려면 `uv python install --default`를 직접 실행하세요.
-- 기존 환경이 없는 새 PC에서는 새 터미널의 `python` · `python3`가 uv 관리 Python을 가리킵니다 (Linux/macOS의 시스템 `/usr/bin/python3`는 그대로 남습니다).
+<details>
+<summary>사용법 · 기존 Python과의 관계</summary>
 
 ```bash
-python --version            # 새 PC 기준: uv가 설치한 최신 Python
-uv python list              # 설치된/설치 가능한 버전 보기
-uv python install 3.13      # 다른 버전 추가 설치
-uv python upgrade           # 패치 버전 업그레이드
+python --version          # 새 PC 기준: uv가 설치한 최신 Python
+uv venv                   # 가상환경
+uv pip install <패키지>    # 패키지 설치
+uv add <패키지>            # 프로젝트에 의존성 추가
+uv run <스크립트>          # 환경을 알아서 맞춰 실행
+uv python list            # 설치된/가능한 버전
+uv python upgrade         # 패치 업그레이드
 ```
 
-> ⚠️ **전역 `pip install` 대신 uv를 쓰세요.** 최근 Ubuntu/Debian의 시스템 Python은 전역 `pip install`을 막아 둡니다(externally-managed 에러). uv가 설치한 Python에서도 전역에 섞어 깔기보다 프로젝트별 환경을 쓰는 편이 안전합니다. 패키지는 아래 [uv](#-uv)로 설치하세요 — 프로젝트면 `uv add <패키지>`, 가상환경이면 `uv venv` 후 `uv pip install <패키지>`.
+- **기존 Python 환경은 건드리지 않습니다.** Windows는 PATH에 다른 Python이 있으면(Store판 포함) 건너뜁니다. Linux·macOS는 `python3`가 pyenv·conda·brew 등 `/usr/bin` 밖에서 잡히거나 `pip --user` 패키지가 있으면 `python3.x` 명령만 추가하고 기본 `python3`는 그대로 둡니다. 이때는 `uv run python`으로 실행하고, 기본값으로 바꾸려면 `uv python install --default`.
+- **전역 `pip install` 대신 uv를 쓰세요.** 최근 Ubuntu/Debian의 시스템 Python은 전역 설치를 막아 둡니다(externally-managed 에러).
+
+</details>
+
+#### 🔤 Nerd Font
+
+프롬프트 기호와 아이콘이 □로 깨지지 않게 하는 폰트(JetBrainsMono Nerd Font).
+
+<img src="https://raw.githubusercontent.com/JetBrains/JetBrainsMono/master/images/main-img@2x.png" alt="JetBrains Mono" width="560">
+
+<details>
+<summary>운영체제별 적용</summary>
+
+- **Windows** — 자동 설치하고 Windows Terminal·예전 콘솔 창의 기본 폰트로 설정합니다. Starship을 안 써도 필요합니다: 예전 콘솔 창의 기본 폰트 Consolas에는 프롬프트 화살표 `❯`가 없어 □로 깨집니다.
+- **macOS** — 자동 설치. **터미널 앱 설정에서 폰트를 `JetBrainsMono Nerd Font`로 직접 바꿔야** 적용됩니다(Terminal.app · iTerm2 · Ghostty).
+- **Linux** — 수동: [nerdfonts.com](https://www.nerdfonts.com/font-downloads)에서 JetBrainsMono 내려받기 → `~/.local/share/fonts`에 풀기 → `fc-cache -f` → 터미널 폰트 변경
+- VS Code 등 다른 앱은 각 앱 설정에서 폰트를 바꾸세요.
+
+</details>
 
 ---
 
-### ⚡ uv
-빠른 Python 패키지·venv 관리자 (Rust 단일 바이너리). pip·venv를 대체하며 수십 배 빠릅니다.
+## 🔌 Claude Code 플러그인
 
-```
-uv venv                # 가상환경 생성
-uv pip install <패키지>  # 패키지 설치
-uv run <스크립트>        # 환경 자동 구성 후 실행
-```
-
----
-
-### 🐙 Git
-버전 관리 도구. GitHub CLI · Claude Code 사용에 필요.
-
-```
-git clone <repo>
-git commit -m "feat: 기능 추가"
-git push
-```
-
----
-
-### 🐱 GitHub CLI
-터미널에서 GitHub PR · 이슈 · Gist 관리.
-
-```
-gh pr create           # PR 생성
-gh issue list          # 이슈 목록
-gh gist list           # Gist 목록
-```
-
----
-
-### 🔵 Codex CLI
-OpenAI의 AI 코딩 CLI. 터미널에서 자연어로 코드 작성·수정·실행. Node 불필요, 자동 업데이트(OpenAI 권장). 첫 실행 시 `codex login` 필요.
-
-네이티브 인스톨러로 설치 (install.ps1이 자동 실행 — 수동 설치 시):
-
-```powershell
-irm https://chatgpt.com/codex/install.ps1 | iex
-```
-
-> ⚠️ 설치 중 `tar: Cannot connect to C:` 오류가 나면, PATH 앞쪽에 **Git의 유닉스 `tar`(`...\Git\usr\bin`)** 가 끼어 Windows 경로를 원격 호스트로 오해한 것입니다. `where.exe tar` 로 확인하고, `C:\Windows\System32\tar.exe` 가 먼저 잡히는 일반 PowerShell 창에서 위 명령을 다시 실행하세요.
+로그인이 필요해서 자동으로 실행하지 않습니다. 설치 끝에 같은 명령이 출력됩니다.
 
 ```bash
-codex                         # 대화형 모드 실행
-codex 'tests 작성해줘'        # 한 줄 명령으로 실행
-codex login                   # OpenAI 계정 로그인
-```
-
----
-
-### 💎 Antigravity CLI (`agy`)
-Google의 터미널 코딩 에이전트. **Gemini CLI의 후속**입니다. Node 불필요, 백그라운드 자동 업데이트. 첫 실행 시 브라우저가 열려 Google 계정으로 로그인합니다.
-
-네이티브 인스톨러로 설치 (설치 스크립트가 자동 실행 — 수동 설치 시):
-
-```powershell
-# Windows
-irm https://antigravity.google/cli/install.ps1 | iex
-```
-
-```bash
-# macOS / Linux
-curl -fsSL https://antigravity.google/cli/install.sh | bash
-```
-
-```bash
-agy                           # 대화형 모드 실행 (첫 실행 시 로그인)
-```
-
-> ℹ️ **Gemini CLI(`@google/gemini-cli`)를 쓰던 분께**: Google이 2026-06-18부터 무료 · AI Pro · Ultra 계정의 Gemini CLI 요청을 받지 않습니다(유료 API 키 · 기업 라이선스만 유지). 그래서 이 스크립트는 더 이상 Gemini CLI를 설치하지 않습니다. 예전 스크립트로 깔린 Gemini CLI가 있으면 재실행 시 **삭제할지 물어봅니다**(기본값 N — 유료 API 키로 계속 쓴다면 그대로 두세요. 무인 설치에서는 묻지 않고 안내만 합니다). 지우는 건 npm 패키지뿐이고 `~/.gemini` 폴더는 Antigravity CLI가 이어서 쓰므로 그대로 둡니다. 쓰던 확장 기능은 `agy plugin import gemini`로 옮길 수 있습니다. 직접 지우려면 `npm uninstall -g @google/gemini-cli`. 이전 방법은 [공식 마이그레이션 안내](https://antigravity.google/docs/gcli-migration)를 참고하세요.
-
----
-
-### 🔗 oh-my-codex (`omx`)
-[GitHub](https://github.com/Yeachan-Heo/oh-my-codex) · [문서](https://yeachan-heo.github.io/oh-my-codex-website/)
-
-Codex CLI용 워크플로우 레이어. Codex를 실행 엔진으로 유지하면서 명확화→계획→실행의 일관된 워크플로우를 제공. 프로젝트 상태는 `.omx/`에 저장.
-
-```bash
-omx --madmax --high           # OMX 기본 실행 (권장)
-omx setup                     # 초기 설정
-omx doctor                    # 설치 상태 확인
-
-# Codex 세션 내 주요 스킬
-$deep-interview "요구사항 명확히 해줘"   # 심층 인터뷰로 요구사항 정리
-$ralplan "계획 수립하고 트레이드오프 검토" # 계획 수립 및 승인
-$ralph "승인된 계획 완료까지 실행"        # 반복 실행 루프
-$team 3:executor "병렬로 실행해줘"       # 병렬 멀티에이전트 실행
-```
-
----
-
-### 🧩 oh-my-claudecode (`omc`)
-[GitHub](https://github.com/Yeachan-Heo/oh-my-claudecode) · [문서](https://yeachan-heo.github.io/oh-my-claudecode-website)
-
-Claude Code용 멀티에이전트 오케스트레이션 레이어. planner·executor·reviewer 등 전문 에이전트를 자동 라우팅하고 HUD로 실시간 토큰·세션 상태 표시. _"Don't learn Claude Code. Just use OMC."_
-
-> **설치 방식**: 공식 README가 권장하는 대로 세 OS 모두 **Claude Code 플러그인**으로 설치합니다. Claude Code 로그인이 필요해서 스크립트가 자동 실행하지 않고, 설치 끝에 명령을 안내합니다(아래 [플러그인 섹션](#claude-code-플러그인-로그인-후-수동-실행) 참고). Claude Code 세션 안의 스킬(`/autopilot` 등)로 사용합니다.
->
-> 터미널에서 `omc` 셸 명령도 쓰고 싶다면 npm판(`npm i -g oh-my-claude-sisyphus@latest`)을 따로 설치할 수 있습니다(공식 문서의 대안 경로). Windows에서는 C++ 빌드툴이 필요한 네이티브 모듈을 끌어와 실패할 수 있습니다. 예전 스크립트가 macOS/Linux에 깔아둔 npm판은 지우지 않지만, 이제 스크립트가 업데이트하지는 않습니다.
-
-```bash
-# Claude Code 세션 내
-/omc-setup                      # 초기 설정 (HUD·훅 자동 구성)
-/autopilot "REST API 만들어줘"  # 자율 실행 모드 (계획→구현→검증)
-/ralph "승인된 계획 완료까지"    # 반복 완료 루프
-/ccg "이 PR 리뷰해줘"           # Codex + Antigravity(또는 Gemini) 병렬 자문
-/team                           # 멀티에이전트 팀 오케스트레이션
-```
-
----
-
-## Claude Code 플러그인 (로그인 후 수동 실행)
-
-```powershell
-# 1. 로그인
 claude auth login
 
-# 2. oh-my-claudecode (omc)
+# oh-my-claudecode (omc)
 claude plugin marketplace add Yeachan-Heo/oh-my-claudecode
 claude plugin install oh-my-claudecode@omc
 
-# 3. codex 플러그인
+# Codex 플러그인
 claude plugin marketplace add openai/codex-plugin-cc
 claude plugin install codex@openai-codex
 
-# 4. honeypot 마켓플레이스
+# honeypot 마켓플레이스
 claude plugin marketplace add https://github.com/orientpine/honeypot.git
 
-# 5. Karpathy 가이드라인 플러그인
+# Karpathy 가이드라인
 claude plugin marketplace add forrestchang/andrej-karpathy-skills
 claude plugin install andrej-karpathy-skills@karpathy-skills
 ```
 
 ---
 
-## 단축키 / 명령어
+## 🔧 설치 후 자동 적용되는 설정
 
-| 명령어 | 설명 |
-|--------|------|
-| `cc` | `claude --dangerously-skip-permissions` (bypass permissions on) |
-| `ccc` | `cc --continue` (이전 대화 이어서) |
-| `ccr` | `cc --resume` (세션 복구) |
-| `which <명령어>` | 명령어 설치 경로 확인 |
-| `touch <파일>` | 빈 파일 생성 (있으면 수정 시간 갱신) |
-| `z <키워드>` | 자주 간 디렉토리로 바로 이동 |
-| `zi` | fzf UI로 디렉토리 선택 후 이동 |
-| `Ctrl+R` | fzf로 히스토리 퍼지 검색 |
-| `Ctrl+T` | fzf로 파일 검색 후 경로 삽입 (fd 설치 시 .gitignore 존중) |
-| `↑ / ↓` | 입력한 내용 기준 히스토리 검색 (Windows=PSReadLine · macOS·Linux=substring-search 플러그인) |
-| `→` | 회색 자동제안 수락 (zsh-autosuggestions / PSReadLine) |
-| `ll` / `la` / `lt` | eza 긴 목록 / 숨김 포함 / 트리 |
-| `cat <파일>` | bat 문법 하이라이트로 표시 |
-| `tldr <명령>` | 실전 예시 위주 명령어 도움말 |
-| `conda` | Conda 초기화 — **Windows 프로필 전용** (mac/Linux 스크립트는 conda를 설치·설정하지 않음) |
+<details>
+<summary>🪟 Windows — PowerShell 프로필</summary>
+
+`Microsoft.PowerShell_profile.ps1`이 `$PROFILE`에 내려받아집니다(기존 프로필은 날짜를 붙여 백업).
+
+| 기능 | 설명 |
+|------|------|
+| 프롬프트 | 외부 프로그램 없는 순수 PowerShell. `.git/HEAD`를 직접 읽어 브랜치 표시, 경로 단축, 성공/실패에 따라 `❯` 색 |
+| zoxide · fzf | `z`, `Ctrl+R`, `Ctrl+T` (fd가 있으면 fd로) |
+| eza | `ll` · `la` · `lt` |
+| 자동제안 | PSReadLine 예측 — 회색 제안, `→`로 수락 |
+| cc / ccc / ccr | Claude Code 단축 명령 |
+| SSH agent | ssh-agent 서비스가 **이미 실행 중일 때만** `.ssh`의 키를 자동 등록 |
+| 로드 시간 | 시작할 때 `PowerShell loaded in {N}ms` 표시 |
+| 도구 캐시 | 도구 유무와 zoxide 초기화 결과를 파일 하나에 저장. 프로필이나 도구 exe가 바뀌면 자동으로 다시 만듦 |
+
+</details>
+
+<details>
+<summary>🐧 Linux / WSL — .bashrc · .zshrc</summary>
+
+| 기능 | 설명 |
+|------|------|
+| Starship | 프롬프트 (init 결과를 `~/.cache/starship_init_*`에 캐시) |
+| zoxide · fzf | `z`, `Ctrl+R`, `Ctrl+T` (fd 기반, `fdfind` 자동 처리) |
+| zsh 플러그인 | 자동제안 · 오타 색상 · ↑↓ 부분 검색 |
+| eza · bat · delta | `ll`/`la`/`lt`, `cat`=bat(`batcat` 자동 처리), git pager=delta(설정이 없을 때만) |
+| PATH | `~/.npm-global/bin`(sudo 없는 npm 전역), `~/.local/bin`(uv·네이티브 CLI) |
+| SSH agent | 에이전트를 재사용(`~/.ssh/agent.env`)하고 첫 개인키 등록. 키가 없으면 아무것도 안 함 |
+| 로드 시간 | `[shell] loaded in Xms` |
+
+</details>
+
+<details>
+<summary>🍎 macOS — .zshrc</summary>
+
+| 기능 | 설명 |
+|------|------|
+| Starship | 프롬프트 (`~/.cache/starship_init_zsh.zsh` 캐시) |
+| zoxide · fzf | `z`, `Ctrl+R`, `Ctrl+T` (fd 기반) |
+| zsh 플러그인 | 자동제안 · 오타 색상 · ↑↓ 부분 검색 |
+| eza · bat · delta | `ll`/`la`/`lt`(아이콘), `cat`=bat, git pager=delta(설정이 없을 때만) |
+| Homebrew | `shellenv` 적용 — Apple Silicon·Intel 모두 |
+| SSH agent | macOS 키체인이 자동 관리 |
+| 로드 시간 | `[shell] loaded in Xms` |
+
+</details>
+
+<details>
+<summary>📝 스크립트 없이 설정만 직접 넣고 싶다면</summary>
+
+**가장 쉬운 방법은 설치 명령을 다시 실행하는 것입니다.** 이미 있는 것은 건너뛰고 빠진 설정만 추가합니다.
+
+**Windows** — 프로필만 내려받기 (**반드시 `pwsh` 7에서** 실행. 5.1에서 실행하면 5.1 프로필 위치에 저장돼 시작할 때마다 에러가 납니다):
+
+```powershell
+$profileUrl = "https://raw.githubusercontent.com/hd0126/dev-setup/main/Microsoft.PowerShell_profile.ps1"
+New-Item -ItemType Directory -Force -Path (Split-Path $PROFILE) | Out-Null
+if (Test-Path $PROFILE) { Copy-Item $PROFILE "$PROFILE.$(Get-Date -Format 'yyyyMMdd_HHmmss').bak" }
+Invoke-WebRequest -Uri $profileUrl -OutFile $PROFILE
+```
+
+**bash** — `.bashrc` 끝에 핵심 설정 추가 (zsh 플러그인·eza·bat·fd 연결은 제외한 축약본):
+
+```bash
+cat >> ~/.bashrc << 'EOF'
+alias cc='claude --dangerously-skip-permissions'
+alias ccc='cc --continue'
+alias ccr='cc --resume'
+case ":$PATH:" in *":$HOME/.npm-global/bin:"*) ;; *) export PATH="$HOME/.npm-global/bin:$PATH" ;; esac
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
+command -v zoxide &>/dev/null && eval "$(zoxide init bash --cmd z)"
+if command -v fzf &>/dev/null; then
+    if fzf --bash &>/dev/null; then eval "$(fzf --bash)"
+    elif [ -f /usr/share/doc/fzf/examples/key-bindings.bash ]; then source /usr/share/doc/fzf/examples/key-bindings.bash; fi
+fi
+command -v starship &>/dev/null && eval "$(starship init bash)"
+EOF
+```
+
+**zsh** — `.zshrc` 끝에 추가:
+
+```bash
+cat >> ~/.zshrc << 'EOF'
+alias cc='claude --dangerously-skip-permissions'
+alias ccc='cc --continue'
+alias ccr='cc --resume'
+case ":$PATH:" in *":$HOME/.npm-global/bin:"*) ;; *) export PATH="$HOME/.npm-global/bin:$PATH" ;; esac
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
+command -v zoxide &>/dev/null && eval "$(zoxide init zsh --cmd z)"
+if command -v fzf &>/dev/null; then
+    if fzf --zsh &>/dev/null; then source <(fzf --zsh)
+    elif [ -f /usr/share/doc/fzf/examples/key-bindings.zsh ]; then source /usr/share/doc/fzf/examples/key-bindings.zsh; fi
+fi
+command -v starship &>/dev/null && eval "$(starship init zsh)"
+EOF
+```
+
+적용: 새 터미널을 열거나 `source ~/.bashrc` / `source ~/.zshrc`
+
+</details>
 
 ---
 
-## 프로필 캐시 관리
+## 🩺 문제 해결
 
-### 🪟 Windows (PowerShell)
+<details>
+<summary>아이콘이나 <code>❯</code>가 □로 보여요</summary>
 
-프로필은 첫 실행 시 도구(zoxide·fzf·starship·eza·fd) 유무와 zoxide init 결과를 **파일 하나**
-(`$env:TEMP\pwsh_profile_cache.ps1`)에 저장합니다. 이후에는 프로필과 각 도구 exe의 수정 시각만
-비교하므로 `Get-Command`나 `zoxide.exe` 실행 없이 시작합니다.
+터미널 폰트가 Nerd Font가 아닙니다.
+- Windows Terminal: 설정 → 기본값 → 모양 → 글꼴 → `JetBrainsMono Nerd Font`
+- 예전 콘솔 창: 제목 표시줄 → 속성 → 글꼴 → `JetBrainsMono Nerd Font Mono`
+- macOS 터미널 앱 · VS Code: 각 앱 설정에서 폰트 변경
 
-- **자동으로 다시 만드는 경우**: 프로필을 고쳤을 때, `winget upgrade zoxide`처럼 캐시에 기록된 도구가 바뀌거나 지워졌을 때
-- **직접 지워야 하는 경우**: install.ps1 없이 **새 도구를 따로 설치**했을 때(캐시를 만들 땐 없던 도구라 감지하지 못함). install.ps1은 실행할 때 캐시를 지워 줍니다.
+</details>
 
-`GetFullPath`로 감싸는 이유: 계정명에 한글·공백이 있으면 `$env:TEMP`가 짧은 이름
-(`C:\Users\홍길동~1\...`)이 되는데, 이 경로로는 `Remove-Item`이 "지정한 경로 ...~1에
-개체가 없습니다" 에러를 내며 파일을 지우지 못합니다. 긴 경로로 바꿔 지우면 정상 동작합니다.
+<details>
+<summary><code>claude</code>·<code>codex</code>를 찾을 수 없다고 나와요</summary>
+
+설치한 창이 아니라 **새로 연 터미널**에서 실행하세요(Windows는 `pwsh`). 그래도 안 되면 설치 명령을 다시 실행하세요 — PATH를 다시 확인합니다.
+
+</details>
+
+<details>
+<summary>새로 설치한 도구가 Windows 프로필에 반영되지 않아요</summary>
+
+프로필은 도구 유무를 캐시해 둡니다. 도구 exe가 **바뀌면** 자동으로 다시 만들지만, 캐시를 만든 뒤 **새로 설치한** 도구는 알아채지 못합니다(설치 스크립트로 설치하면 자동). 직접 설치했다면:
 
 ```powershell
-# 새 도구를 따로 설치한 뒤 캐시 재생성 (다음 터미널부터 반영)
 Remove-Item ([IO.Path]::GetFullPath("$env:TEMP\pwsh_profile_cache.ps1"))
 ```
 
-### 🐧 Linux / 🍎 macOS
+`GetFullPath`로 감싸는 이유: 계정명에 한글·공백이 있으면 `$env:TEMP`가 짧은 이름(`C:\Users\홍길동~1\...`)이 되고, 그 경로로는 `Remove-Item`이 파일을 지우지 못합니다.
 
-Starship init 결과만 캐시에 저장합니다. 캐시는 **최초 1회 생성 후 재사용**되므로, Starship을 업데이트했다면 수동으로 삭제해야 다음 셸에서 재생성됩니다:
+</details>
+
+<details>
+<summary>Starship을 업데이트했는데 그대로예요 (macOS·Linux)</summary>
+
+init 결과를 캐시합니다. 지우면 다음 셸에서 다시 만듭니다.
 
 ```bash
-# Starship init 캐시 삭제 (다음 셸 시작 시 자동 재생성)
 rm ~/.cache/starship_init_bash.sh   # bash
 rm ~/.cache/starship_init_zsh.zsh   # zsh
 ```
 
+</details>
+
+<details>
+<summary>npm 설치가 C++ 빌드 오류나 네트워크 오류로 실패해요</summary>
+
+설치 스크립트가 원인을 화면에 보여 주고 로그를 저장합니다(Windows: `%TEMP%\omc-install-*.log`). 회사망이라면 `npm config set proxy http://<주소>:<포트>`와 `https-proxy`를 설정한 뒤 다시 실행하세요.
+
+</details>
+
 ---
 
-## 파일 수정 후 업데이트
+## 🤝 기여 · 라이선스
 
-repo를 클론한 폴더에서 파일 수정 후:
-
-```bash
-git add -A && git commit -m "update" && git push
-```
-
----
-
-## 라이선스
-
-[MIT License](LICENSE) — 자유롭게 사용·수정·재배포할 수 있습니다.
+- 이슈와 [Pull Request](https://github.com/hd0126/dev-setup/pulls) 환영합니다. 변경 이력은 [CHANGELOG](CHANGELOG.md), 할 일은 [BACKLOG](BACKLOG.md)에 있습니다.
+- 등록된 이슈는 관리자가 AI 봇 검토를 돌려 진단 코멘트나 수정 PR을 남깁니다.
+- [MIT License](LICENSE) — 자유롭게 사용·수정·재배포할 수 있습니다.
