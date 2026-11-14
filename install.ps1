@@ -730,15 +730,55 @@ if ($selectedNpm) {
     }
 }
 
-# ── Gemini CLI leftover note ──────────────────────────────
-# 예전 버전의 이 스크립트가 npm 으로 깔아둔 Gemini CLI 가 남아 있으면 알려만 준다.
-# 유료 API 키로는 여전히 동작하므로 자동으로 지우지는 않는다.
-$agySelected = $npmPackages | Where-Object { $_.On -and $_.Name -like 'Antigravity*' }
-if ($agySelected -and -not $DryRun -and (Get-Command gemini -ErrorAction SilentlyContinue)) {
+# ── Old Gemini CLI: ask before removing ───────────────────
+# Older versions of this script installed @google/gemini-cli with npm. Google stopped
+# serving it for free/Pro/Ultra accounts on 2026-06-18, and this script no longer
+# updates it, so it is left frozen and (for personal accounts) unusable.
+#   * Ask first, default No: paid-API-key users may still rely on it.
+#   * Non-interactive / dry-run: never prompt, only print the manual command.
+#   * Only the npm package is removed. ~\.gemini is NEVER touched: Antigravity CLI
+#     keeps using it (GEMINI.md, MCP config, skills), and `agy plugin import gemini`
+#     reads the old extensions from there, so it still works after the uninstall.
+$geminiNpm = $null
+if (-not $DryRun) { $geminiNpm = Get-Command npm.cmd -ErrorAction SilentlyContinue }
+$geminiVer = $null
+if ($geminiNpm) {
+    $gLs = & $geminiNpm.Source ls -g '@google/gemini-cli' --depth=0 --json 2>$null | Out-String
+    if ($gLs) {
+        try {
+            $gDeps = ($gLs | ConvertFrom-Json).dependencies
+            if ($gDeps -and $gDeps.PSObject.Properties['@google/gemini-cli']) { $geminiVer = $gDeps.'@google/gemini-cli'.version }
+        } catch {}
+    }
+}
+if ($geminiVer) {
+    $agyBin = Join-Path $env:LOCALAPPDATA 'agy\bin\agy.exe'
     Write-Host ""
-    Write-Host "Note: the old Gemini CLI (gemini) is still installed." -ForegroundColor Yellow
+    Write-Host "Old Gemini CLI found (npm, v$geminiVer)." -ForegroundColor Yellow
     Write-Host "  Google stopped serving it for free/Pro/Ultra accounts on 2026-06-18 (paid API keys still work)." -ForegroundColor DarkGray
-    Write-Host "  Antigravity CLI (agy) replaces it. To remove the old one:  npm uninstall -g @google/gemini-cli" -ForegroundColor DarkGray
+    Write-Host "  Antigravity CLI (agy) replaces it. Your settings in ~\.gemini are kept either way." -ForegroundColor DarkGray
+    $removeGemini = $false
+    if ($NonInteractive) {
+        Write-Host "  To remove it:  npm uninstall -g @google/gemini-cli" -ForegroundColor DarkGray
+    } else {
+        $gAns = Read-Host "  예전 Gemini CLI 를 삭제할까요? 유료 API 키로 계속 쓰신다면 N [y/N]"
+        $removeGemini = ($gAns -match '^(y|yes)$')
+        if (-not $removeGemini) { Write-Host "  Kept. Remove later with:  npm uninstall -g @google/gemini-cli" -ForegroundColor DarkGray }
+    }
+    if ($removeGemini) {
+        $gOut = & $geminiNpm.Source uninstall -g '@google/gemini-cli' 2>&1 | Out-String
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "  -> Gemini CLI removed (~\.gemini kept)." -ForegroundColor Green
+            if (Test-Path $agyBin) {
+                Write-Host "  Gemini extensions you used can be moved over with:  agy plugin import gemini" -ForegroundColor DarkGray
+            }
+        } else {
+            # Optional cleanup: report it, but never count it as an install failure.
+            Write-Host "  -> could not remove Gemini CLI (npm exit $LASTEXITCODE). Try:  npm uninstall -g @google/gemini-cli" -ForegroundColor Yellow
+            $gLines = @($gOut -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 4)
+            foreach ($l in $gLines) { Write-Host "    $($l.Trim())" -ForegroundColor DarkGray }
+        }
+    }
 }
 
 # ── oh-my-codex (omx) Windows caveat ──────────────────────

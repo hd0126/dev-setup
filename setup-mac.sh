@@ -174,6 +174,46 @@ install_npm() {
 # path. Install those natively, independent of npm; omc / omx stay on npm.
 # Antigravity CLI (agy) replaces @google/gemini-cli: Google stopped serving
 # Gemini CLI for free/Pro/Ultra accounts on 2026-06-18 (paid API keys only).
+
+# 예전 버전의 이 스크립트가 npm 으로 깔아둔 Gemini CLI 를, 물어본 뒤에만 지운다.
+#   * 기본값 No — 유료 API 키 사용자는 여전히 쓸 수 있다.
+#   * tty 가 없거나(CI·파이프 전용) CI=true 면 묻지 않고 안내만 한다.
+#   * npm 패키지만 지운다. ~/.gemini 는 절대 건드리지 않는다 — Antigravity CLI 가
+#     GEMINI.md·MCP 설정·스킬을 거기서 계속 쓰고, `agy plugin import gemini` 도
+#     예전 확장을 거기서 읽으므로 삭제 후에도 이전할 수 있다.
+#   * 정리 작업일 뿐이라 실패해도 FAILED 목록에 넣지 않는다.
+remove_old_gemini() {
+    command -v npm &>/dev/null || return 0
+    npm ls -g --depth=0 @google/gemini-cli &>/dev/null || return 0
+    local ver ans=""
+    ver=$(npm ls -g --depth=0 @google/gemini-cli 2>/dev/null | grep -oE '@google/gemini-cli@[^ ]+' | head -1) || ver=""
+    echo ""
+    warn "예전 Gemini CLI 발견 (npm${ver:+, ${ver#@google/gemini-cli@}})"
+    echo "  2026-06-18부터 무료/Pro/Ultra 계정은 사용 불가(유료 API 키만 가능). Antigravity CLI(agy)가 대체합니다."
+    echo "  ~/.gemini 의 설정은 어느 쪽이든 그대로 둡니다."
+    if [ "${CI:-}" = "true" ]; then
+        echo "  제거하려면: npm uninstall -g @google/gemini-cli"
+        return 0
+    fi
+    printf "  예전 Gemini CLI 를 삭제할까요? 유료 API 키로 계속 쓰신다면 N [y/N] "
+    # 중괄호로 감싸야 /dev/tty 를 열지 못할 때의 셸 오류 문구까지 숨겨진다
+    # (`read </dev/tty 2>/dev/null` 은 열기 실패 메시지를 막지 못한다).
+    { read -r ans </dev/tty; } 2>/dev/null || { ans=""; echo ""; }
+    case "$ans" in
+        y|Y|yes|YES)
+            if npm uninstall -g @google/gemini-cli; then
+                ok "Gemini CLI 삭제 (~/.gemini 유지)"
+                if [ -x "$HOME/.local/bin/agy" ]; then
+                    echo "  쓰던 Gemini 확장은 이렇게 옮길 수 있습니다: agy plugin import gemini"
+                fi
+            else
+                warn "Gemini CLI 삭제 실패 — 직접 실행: npm uninstall -g @google/gemini-cli"
+            fi ;;
+        *)
+            echo "  유지합니다. 나중에 지우려면: npm uninstall -g @google/gemini-cli" ;;
+    esac
+}
+
 install_native() {
     local name="$1" url="$2" sh="${3:-bash}" cmd="$4"
     # Native builds self-update in the background, so an existing install is
@@ -204,12 +244,7 @@ else
     warn "npm not found — skipping omc/omx. Install Node.js first, then re-run."
 fi
 
-# 예전 버전의 이 스크립트가 npm 으로 깔아둔 Gemini CLI 가 남아 있으면 알려만 준다
-# (유료 API 키로는 여전히 동작하므로 자동 삭제하지 않음).
-if command -v gemini &>/dev/null; then
-    warn "예전 Gemini CLI(gemini)가 남아 있습니다 — 2026-06-18부터 무료/Pro/Ultra 계정은 사용 불가(유료 API 키만 가능)."
-    warn "  Antigravity CLI(agy)가 대체합니다. 제거: npm uninstall -g @google/gemini-cli"
-fi
+remove_old_gemini
 
 # ── 5b. git-delta를 git pager로 (기존 설정 있으면 건드리지 않음) ──
 if command -v delta &>/dev/null; then

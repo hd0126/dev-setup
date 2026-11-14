@@ -605,7 +605,7 @@ curl -fsSL https://antigravity.google/cli/install.sh | bash
 agy                           # 대화형 모드 실행 (첫 실행 시 로그인)
 ```
 
-> ℹ️ **Gemini CLI(`@google/gemini-cli`)를 쓰던 분께**: Google이 2026-06-18부터 무료 · AI Pro · Ultra 계정의 Gemini CLI 요청을 받지 않습니다(유료 API 키 · 기업 라이선스만 유지). 그래서 이 스크립트는 더 이상 Gemini CLI를 설치하지 않습니다. 예전에 설치된 것은 자동으로 지우지 않으니, 필요 없으면 `npm uninstall -g @google/gemini-cli`로 제거하세요. 이전 방법은 [공식 마이그레이션 안내](https://antigravity.google/docs/gcli-migration)를 참고하세요.
+> ℹ️ **Gemini CLI(`@google/gemini-cli`)를 쓰던 분께**: Google이 2026-06-18부터 무료 · AI Pro · Ultra 계정의 Gemini CLI 요청을 받지 않습니다(유료 API 키 · 기업 라이선스만 유지). 그래서 이 스크립트는 더 이상 Gemini CLI를 설치하지 않습니다. 예전 스크립트로 깔린 Gemini CLI가 있으면 재실행 시 **삭제할지 물어봅니다**(기본값 N — 유료 API 키로 계속 쓴다면 그대로 두세요. 무인 설치에서는 묻지 않고 안내만 합니다). 지우는 건 npm 패키지뿐이고 `~/.gemini` 폴더는 Antigravity CLI가 이어서 쓰므로 그대로 둡니다. 쓰던 확장 기능은 `agy plugin import gemini`로 옮길 수 있습니다. 직접 지우려면 `npm uninstall -g @google/gemini-cli`. 이전 방법은 [공식 마이그레이션 안내](https://antigravity.google/docs/gcli-migration)를 참고하세요.
 
 ---
 

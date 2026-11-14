@@ -14,8 +14,13 @@
   무료·AI Pro·Ultra 계정의 Gemini CLI 요청을 받지 않아(유료 API 키·기업 라이선스만 유지),
   기본 설치되던 `@google/gemini-cli`가 초보 사용자에겐 설치돼도 못 쓰는 도구가 됐다.
   Google 공식 네이티브 인스톨러(`antigravity.google/cli/install.{sh,ps1}`)로 `agy`를
-  설치한다 — Node 불필요, 자체 업데이트. 예전에 npm으로 깔린 Gemini CLI는 자동 삭제하지
-  않고 안내만 출력한다.
+  설치한다 — Node 불필요, 자체 업데이트.
+- **예전 스크립트로 깔린 Gemini CLI는 물어보고 삭제 (3-OS 공통)** — 새 스크립트는 Gemini
+  CLI를 더 이상 업데이트하지 않아, 남겨 두면 개인 계정으론 로그인도 안 되는 버전에 멈춘다.
+  npm 전역 패키지가 있으면 `y/N`(기본 N)으로 묻고, 무인 설치·dry-run·tty 없는 환경에서는
+  묻지 않고 안내만 출력한다. npm 패키지만 지우고 `~/.gemini`는 절대 건드리지 않는다 —
+  Antigravity CLI가 `GEMINI.md`·MCP 설정·스킬을 그 폴더에서 계속 쓰고,
+  `agy plugin import gemini`도 예전 확장을 거기서 읽는다. 삭제 실패는 설치 실패로 세지 않는다.
 - **Python 버전 고정 제거 → uv가 최신 Python 설치 (3-OS 공통)** — Windows `Python.Python.3.12`
   (winget)와 macOS `python@3.12`(brew) 고정이 3.15 출시 뒤에도 남아 있었다. 이제
   `uv python install --default`로 최신 안정판을 `~/.local/bin`에 설치한다(구버전 uv 등
