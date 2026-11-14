@@ -481,6 +481,17 @@ foreach ($pkg in $wingetList) {
     Write-Host "[$wingetIdx/$wingetTotal] $($pkg.Name)..." -ForegroundColor Cyan -NoNewline
     if ($DryRun) { Write-Host " [DRY-RUN] would install/upgrade ($($pkg.Id))" -ForegroundColor DarkGray; continue }
 
+    # Running inside PowerShell 7 itself: pwsh is evidently installed, and letting winget
+    # upgrade it now makes the installer close every running pwsh.exe - including the
+    # one executing this script, which then dies mid-run (seen on a CI runner: the log
+    # just stops at "PowerShell 7..."). Leave the upgrade to a later run from Windows
+    # PowerShell (the default blue "PowerShell" window) or to `winget upgrade` by hand.
+    if ($pkg.Id -eq 'Microsoft.PowerShell' -and $PSVersionTable.PSEdition -eq 'Core') {
+        Write-Host " [OK - running in PowerShell $($PSVersionTable.PSVersion); not upgrading the shell that runs this script]" -ForegroundColor Green
+        Write-Host "    To upgrade it later, from Windows PowerShell:  winget upgrade Microsoft.PowerShell" -ForegroundColor DarkGray
+        continue
+    }
+
     # Check if already installed, and from which source
     if ($null -ne $installedIds) {
         $alreadyInstalled = $installedIds.ContainsKey($pkg.Id)

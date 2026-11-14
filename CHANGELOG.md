@@ -84,6 +84,11 @@
   해당하던 주석 5줄(CP949 3줄, CP932 2줄)은 ASCII 문자로 끝나도록 고쳤다.
 
 ### Fixed
+- **PowerShell 7 창에서 실행하면 설치가 중간에 끊길 수 있던 문제** — 스크립트가 pwsh 7 안에서
+  돌 때 winget이 PowerShell 7을 업그레이드하면, 설치기가 실행 중인 pwsh를 모두 닫아 스크립트
+  자체가 "PowerShell 7..." 단계에서 종료됐다(실제 설치 E2E에서 발견). pwsh 7 안에서 실행 중이면
+  PowerShell 7 항목은 건너뛰고, 나중에 Windows PowerShell에서 `winget upgrade Microsoft.PowerShell`을
+  하라고 안내한다. E2E는 Windows PowerShell 5.1과 pwsh 7 두 경로를 모두 실행한다.
 - **네이티브 claude·codex가 이미 있으면 npm 사본이 영영 남던 문제** — npm 사본 제거가
   네이티브를 새로 설치할 때만 실행돼, 네이티브가 이미 있는 PC에서는 "already installed"로
   건너뛰며 npm 사본이 계속 남았다. Claude Code용 `~\.local\bin`은 사용자 PATH 끝에 붙으므로

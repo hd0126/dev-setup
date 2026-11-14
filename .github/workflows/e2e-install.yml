@@ -60,7 +60,14 @@ jobs:
           exit $fail
 
   windows:
-    name: Real install (windows-latest)
+    # Both shells a beginner might paste the one-liner into: Windows PowerShell 5.1
+    # (the default "PowerShell" window) and PowerShell 7. Under pwsh the script must not
+    # upgrade the very pwsh that runs it (that kills the run); under 5.1 it may.
+    name: Real install (windows-latest, ${{ matrix.shell }})
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [powershell, pwsh]
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -106,13 +113,20 @@ jobs:
           winget --version
           Add-Content -Path $env:GITHUB_PATH -Value $apps
 
-      - name: Run install.ps1 (unattended)
-        shell: pwsh
+      - name: Run install.ps1 (unattended, ${{ matrix.shell }})
+        # The step's own host must be the shell under test: in the 5.1 run the script may
+        # upgrade pwsh, which would close a pwsh step host along with it.
+        shell: ${{ matrix.shell }}
         env:
           DEVSETUP_NONINTERACTIVE: "1"
         run: |
-          pwsh -NoProfile -File ./install.ps1
-          if ($LASTEXITCODE -ne 0) { Write-Host "::error::install.ps1 exited $LASTEXITCODE"; exit 1 }
+          if ('${{ matrix.shell }}' -eq 'powershell') {
+            powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./install.ps1
+          } else {
+            pwsh -NoProfile -File ./install.ps1
+          }
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { Write-Host "::error::install.ps1 exited $code"; exit 1 }
 
       - name: Verify the tools a new terminal would find
         shell: pwsh
