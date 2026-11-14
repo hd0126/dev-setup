@@ -280,12 +280,25 @@ install_native() {
         ok "$name (already installed: $("$HOME/.local/bin/$cmd" --version 2>/dev/null | head -1))"
         return 0
     fi
-    local tmp; tmp="$(mktemp)"
-    info "Installing $name (native installer)..."
+    local tmp log; tmp="$(mktemp)"; log="$(mktemp)"
+    info "Installing $name (native installer, can take a minute)..."
     # Download first, THEN run: piping `curl | sh` hides a failed download
     # (sh exits 0 on empty stdin), so a 404/network error would falsely report OK.
-    if curl -fsSL "$url" -o "$tmp" && "$sh" "$tmp"; then ok "$name"; else fail "$name"; fi
-    rm -f "$tmp"
+    # The installer's own output goes to a log: on success it is noise for a beginner
+    # (Antigravity prints glog lines tagged "ERROR: logging before google.Init"); on
+    # failure its last lines are shown.
+    # CODEX_NON_INTERACTIVE: codex's installer would otherwise offer "Start Codex now?"
+    # and, on "y", draw its UI into the log - the screen would look frozen.
+    if curl -fsSL "$url" -o "$tmp" && CODEX_NON_INTERACTIVE=1 "$sh" "$tmp" >"$log" 2>&1; then
+        ok "$name"
+    else
+        fail "$name"
+        if [ -s "$log" ]; then
+            echo "  --- installer output (last 15 lines) ---"
+            tail -n 15 "$log" | sed 's/^/  /'
+        fi
+    fi
+    rm -f "$tmp" "$log"
 }
 
 install_native "Claude Code"    "https://claude.ai/install.sh"         bash claude

@@ -783,7 +783,7 @@ if ($selectedNpm) {
                 continue
             }
 
-            Write-Host ""
+            Write-Host " downloading the native build (can take a minute)..." -ForegroundColor DarkGray
             $tmp       = Join-Path $env:TEMP "devsetup-native-$npmIdx.ps1"
             $nativeLog = Join-Path $env:TEMP ("omc-install-" + ($pkg.Name -replace '[^\w.-]','_') + ".log")
 
@@ -808,9 +808,12 @@ if ($selectedNpm) {
                 Invoke-RestMethod $pkg.Installer -OutFile $tmp
                 # 출력을 캡처(=리다이렉트)하면 프롬프트도 자동 우회되고, 실패 시 실제 원인
                 # (tar/symlink/네트워크)을 로그로 남겨 이슈 리포트에 담을 수 있다.
+                # The installer's own output goes to the log only. On success it is noise for a
+                # beginner (Antigravity prints glog lines tagged "ERROR: logging before
+                # google.Init" and warns that its folder is not on the *current* PATH, which
+                # this script fixes right after). On failure the key lines are shown below.
                 $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $tmp 2>&1 | Out-String
                 $out | Out-File -FilePath $nativeLog -Encoding utf8
-                if ($out.Trim()) { Write-Host $out.TrimEnd() -ForegroundColor DarkGray }
 
                 # codex 에 표기 충돌(ASCII vs 한글)로 남은 옛 정션이 있으면 "Refusing to
                 # retarget junction" 으로 실패한다. standalone 을 정리하고 1회 재시도.
@@ -820,7 +823,6 @@ if ($selectedNpm) {
                     Remove-Item (Join-Path $env:LOCALAPPDATA 'Programs\OpenAI\Codex') -Recurse -Force -ErrorAction SilentlyContinue
                     $out2 = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $tmp 2>&1 | Out-String
                     $out2 | Out-File -FilePath $nativeLog -Encoding utf8 -Append
-                    if ($out2.Trim()) { Write-Host $out2.TrimEnd() -ForegroundColor DarkGray }
                 }
 
                 # 성공 판정은 exit code 가 아니라 실제 바이너리 존재로 한다 (네이티브 설치기가
@@ -847,7 +849,8 @@ if ($selectedNpm) {
                     $failedPkgs += "$($pkg.Name) (native installer)"
                     # 실제 원인 줄을 화면에도 노출한다.
                     $keyLines = @((Get-Content $nativeLog -ErrorAction SilentlyContinue) |
-                        Where-Object { $_ -match 'symlink|Refusing|tar|Cannot extract|throw|Error|Exception|ETIMEDOUT|ENOTFOUND|denied|SHA256|checksum' } |
+                        Where-Object { $_ -match 'symlink|Refusing|tar|Cannot extract|throw|Error|Exception|ETIMEDOUT|ENOTFOUND|denied|SHA256|checksum' -and
+                                       $_ -notmatch 'logging before google\.Init' } |   # agy's normal glog lines say "ERROR:"
                         Select-Object -Last 8)
                     foreach ($l in $keyLines) { Write-Host "    $($l.Trim())" -ForegroundColor DarkGray }
                 }
@@ -1159,7 +1162,7 @@ if ($DryRun) {
     # 전부 성공했을 때만 star 제안 (mac/linux 와 동등). 로그인+미star 일 때만 묻는다.
     $ghStar = Get-Command gh -ErrorAction SilentlyContinue
     if ($ghStar -and -not $NonInteractive) {
-        & $ghStar.Source auth status 2>$null
+        & $ghStar.Source auth status *> $null   # exit code only; its output lists the account and token scopes
         if ($LASTEXITCODE -eq 0) {
             & $ghStar.Source api user/starred/hd0126/dev-setup 2>$null | Out-Null
             if ($LASTEXITCODE -ne 0) {
@@ -1263,12 +1266,12 @@ $(( $failedPkgs | ForEach-Object { "- $_" } ) -join "`n")
         $ans = Read-Host "  gh로 지금 바로 이슈를 생성할까요? [y/N]"
         if ($ans -match '^(y|yes)$') {
             # 로그인 여부를 먼저 확인하고, 안 돼 있으면 브라우저 로그인을 즉석 안내 (mac/linux 와 동등).
-            & $gh.Source auth status 2>$null
+            & $gh.Source auth status *> $null
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "  GitHub 로그인이 필요합니다 — 브라우저 안내를 따라주세요 (무료 계정이면 충분)." -ForegroundColor DarkGray
                 & $gh.Source auth login --hostname github.com --web
             }
-            & $gh.Source auth status 2>$null
+            & $gh.Source auth status *> $null
             if ($LASTEXITCODE -eq 0) {
                 $tmpBody = Join-Path $env:TEMP "devsetup-issue-body.md"
                 $reportBodyFull | Out-File -FilePath $tmpBody -Encoding utf8
