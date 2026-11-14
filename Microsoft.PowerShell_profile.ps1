@@ -45,7 +45,7 @@ if (Test-Path -LiteralPath $profileCache) {
             $_exe, $_ticks = $_fields[$_i] -split '\|', 2
             $_cacheOk = (Test-Path -LiteralPath $_exe) -and ((& $_mtime $_exe) -eq $_ticks)
         }
-    } catch { $_cacheOk = $false }
+    } catch { $_cacheOk = $false; $global:DevSetupProfileCacheError = $_ }
 }
 if (-not $_cacheOk) {
     $_tools  = [ordered]@{ hasZoxide = 'zoxide'; hasFzf = 'fzf'; hasStarship = 'starship'; hasEza = 'eza'; hasFd = 'fd' }
@@ -66,6 +66,8 @@ if (-not $_cacheOk) {
         Set-Content -LiteralPath $_tmpC -Value $_text -Encoding UTF8
         Move-Item -LiteralPath $_tmpC -Destination $profileCache -Force
     } catch {
+        # 시작을 막지 않도록 조용히 넘어가되, 원인은 $DevSetupProfileCacheError 에 남겨 둔다.
+        $global:DevSetupProfileCacheError = $_
         Remove-Item -LiteralPath $_tmpC -Force -ErrorAction Ignore
     }
 }

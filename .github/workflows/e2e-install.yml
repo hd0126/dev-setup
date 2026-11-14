@@ -116,15 +116,20 @@ jobs:
       # The step's own host must be the shell under test: in the 5.1 run the script may
       # upgrade pwsh, which would close a pwsh step host along with it. `shell:` does not
       # accept expressions, hence one step per shell.
-      - name: Run install.ps1 (unattended, Windows PowerShell 5.1)
+      #
+      # 5.1 runs the script the way the README tells beginners to: `irm ... | iex`, i.e. the
+      # text is decoded as UTF-8 and handed to Invoke-Expression. (`-File` under 5.1 decodes
+      # with the system code page; the runner is English/CP1252, where this BOM-less file
+      # cannot parse - see the header of install.ps1. ci.yml checks the Korean CP949 case.)
+      - name: Run install.ps1 like the README one-liner (Windows PowerShell 5.1, irm | iex)
         if: matrix.shell == 'powershell'
         shell: powershell
         env:
           DEVSETUP_NONINTERACTIVE: "1"
         run: |
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./install.ps1
-          $code = $LASTEXITCODE
-          if ($code -ne 0) { Write-Host "::error::install.ps1 exited $code"; exit 1 }
+          $script = [IO.File]::ReadAllText("$PWD\install.ps1", [Text.Encoding]::UTF8)
+          Invoke-Expression $script
+          if ($failedPkgs.Count -gt 0) { Write-Host "::error::install.ps1 reported failures: $($failedPkgs -join '; ')"; exit 1 }
 
       - name: Run install.ps1 (unattended, PowerShell 7)
         if: matrix.shell == 'pwsh'
@@ -159,5 +164,13 @@ jobs:
           $out = pwsh -NoLogo -Command "exit" 2>&1 | Out-String
           Write-Host $out
           if ($out -match 'Exception|error' -and $out -notmatch 'PowerShell loaded') { $fail++ }
-          if (-not (Test-Path ([IO.Path]::GetFullPath("$env:TEMP\pwsh_profile_cache.ps1")))) { Write-Host "MISSING  profile cache"; $fail++ }
+          $cache = [IO.Path]::GetFullPath("$env:TEMP\pwsh_profile_cache.ps1")
+          if (Test-Path $cache) {
+            Write-Host "OK       profile cache  ($((Get-Content $cache -TotalCount 1).Substring(0, 40))...)"
+          } else {
+            Write-Host "MISSING  profile cache at $cache"
+            # Diagnostics: what the profile caught while building the cache, and what is in TEMP.
+            pwsh -NoLogo -Command '"TEMP=$env:TEMP"; if ($global:DevSetupProfileCacheError) { "cache error: " + $global:DevSetupProfileCacheError.Exception.GetType().FullName + ": " + $global:DevSetupProfileCacheError.Exception.Message } else { "no cache error recorded" }; Get-ChildItem $env:TEMP -Filter "pwsh_profile_cache*" | ForEach-Object Name'
+            $fail++
+          }
           exit $fail

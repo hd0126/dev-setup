@@ -44,6 +44,17 @@ jobs:
           }
           if ($bad) { exit 1 }
           Write-Host "line-swallow check OK (CP949/932/936/950/1252)"
+      - name: Windows PowerShell 5.1 parse as on Korean Windows (CP949, -File)
+        shell: powershell
+        run: |
+          # What `powershell -File install.ps1` does on Korean Windows: decode the BOM-less
+          # file with CP949, then parse. (Other locales such as CP1252 are documented as
+          # unsupported for 5.1 -File; the one-liner decodes UTF-8 and works everywhere.)
+          $text = [IO.File]::ReadAllText("$PWD\install.ps1", [Text.Encoding]::GetEncoding(949))
+          $errs = $null
+          [void][System.Management.Automation.Language.Parser]::ParseInput($text, [ref]$null, [ref]$errs)
+          if ($errs) { $errs | Select-Object -First 5 | ForEach-Object { Write-Host "::error::$($_.Extent.StartLineNumber): $($_.Message)" }; exit 1 }
+          Write-Host "PS 5.1 CP949 parse OK"
       - name: PSScriptAnalyzer (errors only)
         shell: pwsh
         run: |

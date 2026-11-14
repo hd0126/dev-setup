@@ -1,11 +1,17 @@
 # Windows setup script (winget + npm)
 # Run (admin NOT required - installs are user-scope; only retry as Administrator
 # if a system-wide install fails with access denied):
-#   powershell -ExecutionPolicy Bypass -File install.ps1
 #   pwsh      -ExecutionPolicy Bypass -File install.ps1
+#   powershell -ExecutionPolicy Bypass -File install.ps1   (Korean system locale only - see below)
 #
-# One-liner (safe even on a fresh PC with default Restricted policy):
+# One-liner (safe even on a fresh PC with default Restricted policy; works in any locale):
 #   irm https://raw.githubusercontent.com/hd0126/dev-setup/main/install.ps1 | iex
+#
+# Encoding: this file is UTF-8 WITHOUT a BOM, because a BOM breaks `irm | iex`.
+# `irm | iex` and pwsh 7 read it as UTF-8. Windows PowerShell 5.1 with `-File` reads it
+# in the system ANSI code page instead: on Korean Windows (CP949) it parses fine (CI
+# checks this), but on e.g. English Windows (CP1252) the Korean messages decode into
+# curly quotes and the file does not parse. There, use the one-liner or pwsh.
 
 # 파일 실행이면 경로, irm | iex면 빈 값. irm | iex에서 `exit`는 사용자의
 # 터미널 세션을 통째로 닫아버리므로, 중단할 때 이 값으로 exit/return을 고른다.
