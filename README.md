@@ -636,7 +636,7 @@ claude plugin install andrej-karpathy-skills@karpathy-skills
 | cc / ccc / ccr | Claude Code 단축 명령 |
 | SSH agent | ssh-agent 서비스가 **이미 실행 중일 때만** `.ssh`의 키를 자동 등록 |
 | 로드 시간 | 시작할 때 `PowerShell loaded in {N}ms` 표시 |
-| 도구 캐시 | 도구 유무와 zoxide 초기화 결과를 파일 하나에 저장. 프로필이나 도구 exe가 바뀌면 자동으로 다시 만듦 |
+| 도구 캐시 | 도구 유무와 zoxide 초기화 결과를 파일 하나에 저장. 프로필·도구 exe·PATH가 바뀌면 자동으로 다시 만듦 |
 
 </details>
 
@@ -748,7 +748,7 @@ EOF
 <details>
 <summary>새로 설치한 도구가 Windows 프로필에 반영되지 않아요</summary>
 
-프로필은 도구 유무를 캐시해 둡니다. 도구 exe가 **바뀌면** 자동으로 다시 만들지만, 캐시를 만든 뒤 **새로 설치한** 도구는 알아채지 못합니다(설치 스크립트로 설치하면 자동). 직접 설치했다면:
+프로필은 도구 유무를 캐시해 둡니다. 프로필이나 도구 exe가 바뀌거나, 새 도구 설치로 **PATH가 바뀌면** 자동으로 다시 만듭니다. 이미 PATH에 있는 폴더(예: `WinGet\Links`)에 새 도구가 들어가 PATH가 그대로면 알아채지 못하니(설치 스크립트로 설치하면 자동), 그럴 때는:
 
 ```powershell
 Remove-Item ([IO.Path]::GetFullPath("$env:TEMP\pwsh_profile_cache.ps1"))

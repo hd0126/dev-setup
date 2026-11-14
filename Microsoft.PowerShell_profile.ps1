@@ -17,15 +17,36 @@ function conda {
 }
 
 # --- 3. 도구 캐시: 설치 여부 + zoxide init 을 파일 하나에 ---
-# 첫 줄에 이 프로필과 각 도구 exe 의 수정 시각을 적어 두고, 시작할 때마다 그 시각만
-# 비교한다(Get-Command·zoxide.exe 실행 없이 파일 시각 몇 개 읽기). 프로필이 바뀌거나
-# `winget upgrade zoxide` 등으로 exe 가 바뀌면 자동으로 다시 만든다 — 예전에는 캐시를
-# 지우기 전까지 옛 zoxide init 을 계속 썼다. 캐시를 만든 뒤에 새로 설치한 도구는
-# install.ps1 이 캐시를 지워 반영한다. 강제 재생성:
-#   Remove-Item ([IO.Path]::GetFullPath("$env:TEMP\pwsh_profile_cache.ps1"))
+# 첫 줄에 (1) 이 프로필의 수정 시각, (2) 새 터미널이 받는 PATH(레지스트리의 시스템+사용자
+# PATH), (3) 각 도구 exe 의 수정 시각을 적어 두고, 시작할 때마다 이것만 비교한다
+# (Get-Command·zoxide.exe 실행 없이 레지스트리 값 2개와 파일 시각 몇 개 읽기).
+# - 프로필이 바뀌거나 `winget upgrade zoxide` 등으로 exe 가 바뀌면 다시 만든다.
+# - 도구를 새로 설치해 PATH 가 바뀌면 다시 만든다.
+# - 설치 전에 열려 있던 셸(오래된 PATH)도 레지스트리 PATH 의 빠진 항목을 붙인 뒤 도구를
+#   찾는다. 그래야 그 셸이 캐시를 다시 만들어도 "도구 없음"으로 기록하지 않고, 그 셸에서도
+#   새 도구가 실행된다 (실제로 설치 직후 eza·fd 가 없다고 기록돼 새 터미널에서 ll 이 사라진
+#   적이 있다).
+# 강제 재생성:  Remove-Item ([IO.Path]::GetFullPath("$env:TEMP\pwsh_profile_cache.ps1"))
 $profileCache = "$env:TEMP\pwsh_profile_cache.ps1"
 $_cacheSelf   = if ($PSCommandPath) { $PSCommandPath } else { $PROFILE }
 $_cacheOk     = $false
+# 레지스트리 PATH 는 %JAVA_HOME% 같은 변수를 "풀지 않은 원문"으로 읽는다. 푼 값은 셸마다
+# (예: 오래된 VS Code 가 연 터미널) 달라질 수 있어, 캐시 키로 쓰면 매번 다시 만들게 된다.
+$_rawPath = {
+    param($hive, [string]$sub)
+    try {
+        $k = $hive.OpenSubKey($sub)
+        if ($k) { try { [string]$k.GetValue('Path', '', 'DoNotExpandEnvironmentNames') } finally { $k.Close() } }
+    } catch {}
+}
+$_regPath = (& $_rawPath ([Microsoft.Win32.Registry]::LocalMachine) 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment') +
+            ';' + (& $_rawPath ([Microsoft.Win32.Registry]::CurrentUser) 'Environment')
+# 설치 전에 열린 셸은 PATH 가 옛날 그대로라 새로 설치된 도구를 실행하지 못한다. 레지스트리
+# PATH 에는 있는데 이 셸에 빠진 항목만 "뒤에" 붙인다 (기존 순서·우선순위는 그대로).
+$_have = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($_p in ($env:Path -split ';')) { if ($_p) { [void]$_have.Add($_p.TrimEnd('\')) } }
+$_add = @(foreach ($_p in ([Environment]::ExpandEnvironmentVariables($_regPath) -split ';')) { if ($_p -and $_have.Add($_p.TrimEnd('\'))) { $_p } })
+if ($_add.Count) { $env:Path = $env:Path.TrimEnd(';') + ';' + ($_add -join ';') }
 # 수정 시각은 링크가 아니라 링크가 가리키는 실제 파일에서 읽는다 — 프로필을 dotfiles 레포로
 # 심볼릭 링크했거나 도구가 WinGet\Links 같은 링크로 잡혀도, 실제 파일이 바뀌면 감지된다.
 $_mtime = {
@@ -39,9 +60,9 @@ if (Test-Path -LiteralPath $profileCache) {
         $_r = [IO.StreamReader]::new($profileCache)
         try { $_head = $_r.ReadLine() } finally { $_r.Close() }
         $_fields  = @("$_head".TrimStart('#', ' ') -split "`t")
-        $_cacheOk = ($_fields.Count -ge 2) -and ($_fields[0] -eq 'devsetup-cache 2') -and
-                    ($_fields[1] -eq (& $_mtime $_cacheSelf))
-        for ($_i = 2; $_cacheOk -and $_i -lt $_fields.Count; $_i++) {
+        $_cacheOk = ($_fields.Count -ge 3) -and ($_fields[0] -eq 'devsetup-cache 3') -and
+                    ($_fields[1] -eq (& $_mtime $_cacheSelf)) -and ($_fields[2] -ceq $_regPath)
+        for ($_i = 3; $_cacheOk -and $_i -lt $_fields.Count; $_i++) {
             $_exe, $_ticks = $_fields[$_i] -split '\|', 2
             $_cacheOk = (Test-Path -LiteralPath $_exe) -and ((& $_mtime $_exe) -eq $_ticks)
         }
@@ -50,6 +71,7 @@ if (Test-Path -LiteralPath $profileCache) {
 if (-not $_cacheOk) {
     $_tools  = [ordered]@{ hasZoxide = 'zoxide'; hasFzf = 'fzf'; hasStarship = 'starship'; hasEza = 'eza'; hasFd = 'fd' }
     $_stamps = @(); $_body = @(); $_zExe = $null
+    # $env:Path 에는 위에서 레지스트리 PATH 의 빠진 항목이 이미 붙어 있다.
     foreach ($_k in $_tools.Keys) {
         $_c = Get-Command $_tools[$_k] -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
         $_body += "`$$_k = `$$(([bool]$_c).ToString().ToLower())"
@@ -58,7 +80,7 @@ if (-not $_cacheOk) {
             if ($_k -eq 'hasZoxide') { $_zExe = $_c.Source }
         }
     }
-    $_text = @((@('# devsetup-cache 2', (& $_mtime $_cacheSelf)) + $_stamps) -join "`t") + $_body
+    $_text = @((@('# devsetup-cache 3', (& $_mtime $_cacheSelf), $_regPath) + $_stamps) -join "`t") + $_body
     if ($_zExe) { $_text += (& $_zExe init powershell --cmd z | Out-String) }
     # 임시 파일에 다 쓴 뒤 교체한다 — 터미널 여러 개가 동시에 열려도 반쯤 쓰인 캐시를 읽지 않게.
     $_tmpC = "$profileCache.$PID.tmp"
@@ -73,7 +95,7 @@ if (-not $_cacheOk) {
 }
 if (Test-Path -LiteralPath $profileCache) { . $profileCache }
 # -ErrorAction Ignore: SilentlyContinue 는 없는 변수마다 $Error 에 기록을 남긴다.
-Remove-Variable _cacheSelf, _cacheOk, _mtime, _r, _head, _fields, _i, _exe, _ticks, _tools, _stamps, _body, _zExe, _k, _c, _text, _tmpC -ErrorAction Ignore
+Remove-Variable _cacheSelf, _cacheOk, _rawPath, _regPath, _have, _p, _add, _mtime, _r, _head, _fields, _i, _exe, _ticks, _tools, _stamps, _body, _zExe, _k, _c, _text, _tmpC -ErrorAction Ignore
 
 # --- 4. eza / fd (macOS·Linux 와 같은 별칭) ---
 if ($hasEza) {
