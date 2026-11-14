@@ -36,6 +36,10 @@
   판별하도록 변경(다른 도구 설치 실패 시 Codex 설치 폴더를 지우지 않도록).
 
 ### Fixed
+- **Windows 설치 중 PowerShell 프로필이 통째로 한 번 로드되던 문제** — 실행 정책을
+  `RemoteSigned`로 바꾸는 자식 `pwsh`가 `-NoProfile` 없이 실행돼, 설정 한 줄 바꾸는 데
+  사용자 프로필(zoxide·PSReadLine 등)을 전부 로드했다. 실제 설치에서 약 8초가 걸렸고
+  설치 출력 중간에 `PowerShell loaded in 7777ms`가 찍혔다. `-NoProfile`을 추가.
 - **사용자 PATH에 폴더를 추가할 때 `%VAR%` 항목이 고정값으로 굳던 문제** — Claude Code
   설치·zoxide 폴백에서 폴더를 PATH에 넣을 때 `[Environment]::GetEnvironmentVariable`로 읽은
   (이미 확장된) 값을 다시 써서, `%JAVA_HOME%\bin`이나 Windows 기본 항목

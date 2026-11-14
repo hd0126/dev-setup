@@ -754,10 +754,13 @@ if ($omxSelected) {
 }
 
 # Allow profile to run
-# Run in a child process to avoid the -ExecutionPolicy Bypass override from the parent shell
+# Run in a child process to avoid the -ExecutionPolicy Bypass override from the parent shell.
+# -NoProfile: without it the child loads the user's whole profile (zoxide, PSReadLine, ...)
+# just to change one setting - several seconds, and it printed "PowerShell loaded in Nms"
+# in the middle of the install output.
 if (-not $DryRun) {
     if (Get-Command pwsh -ErrorAction SilentlyContinue) {
-        pwsh -Command "Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force" 2>$null
+        pwsh -NoProfile -Command "Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force" 2>$null
     } else {
         Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force -ErrorAction SilentlyContinue
     }
