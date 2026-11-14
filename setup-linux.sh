@@ -31,7 +31,9 @@ install_apt unzip
 install_apt ripgrep
 install_apt fzf
 install_apt python3
-install_apt python3-pip
+# python3-pip 는 설치하지 않는다: 최근 Ubuntu/Debian 은 시스템 pip 설치를 막아
+# (PEP 668 externally-managed) `pip install` 이 첫 명령부터 에러다. 최신 Python 과
+# 패키지 관리는 uv 가 맡는다 (아래 6c).
 
 # 배포판 버전에 따라 apt에 없을 수 있는 패키지 — 없으면 경고만 하고 계속.
 # apt-cache로 '저장소에 없음'과 '설치 실패'를 구분(락 대기·네트워크 오류를
@@ -135,6 +137,43 @@ else
     ok "uv (already installed)"
 fi
 
+# ── 6c. Python (latest, managed by uv) ────────────────────
+# 시스템 python3(apt)는 그대로 두고 최신 Python 을 uv 로 ~/.local/bin 에 설치한다.
+# 특정 버전 하드코딩 금지 — uv 가 항상 최신 안정판을 고른다.
+# --default 는 버전 명령(python3.x) 외에 python/python3 도 만들어, 새 터미널의
+# 기본 python3 가 uv 관리본이 된다. 이미 Python 환경을 쓰고 있는 사용자의 기본값을
+# 말없이 바꾸면 안 되므로(pip --user 패키지·apt 모듈이 사라진 것처럼 보인다), 아래
+# 둘 중 하나라도 해당하면 --default 없이 버전 명령만 설치한다:
+#   * python3 가 시스템 기본(/usr/bin)이 아닌 곳에서 잡힌다 (pyenv·conda 등)
+#   * pip --user 로 설치한 패키지가 있다 (~/.local/lib/python3*/site-packages)
+# 진행 출력은 숨기지 않는다(다운로드가 멈춘 것처럼 보이지 않도록).
+if command -v uv &>/dev/null; then
+    info "Installing latest Python via uv..."
+    py_cur="$(command -v python3 2>/dev/null || true)"
+    py_default=1
+    # -ef(같은 파일인지)로 비교: PATH 항목 끝의 슬래시 등 표기 차이에 흔들리지 않는다.
+    # ~/.local/bin/python3 는 이전 실행에서 uv 가 만든 것이므로 기존 환경으로 치지 않는다.
+    if [ -n "$py_cur" ] && [ "$py_cur" != /usr/bin/python3 ] && ! [ "$py_cur" -ef "$HOME/.local/bin/python3" ]; then
+        py_default=0
+    fi
+    if ls "$HOME"/.local/lib/python3*/site-packages/* &>/dev/null; then py_default=0; fi
+
+    if [ "$py_default" = 1 ]; then
+        if uv python install --default || { warn "--default 설치 실패 — 버전 명령만 설치로 재시도"; uv python install; }; then
+            ok "Python (uv): $("$HOME/.local/bin/python3" --version 2>/dev/null || echo "installed — run with: uv run python")"
+        else
+            fail "Python (uv python install)"
+        fi
+    elif uv python install; then
+        ok "Python (uv): 최신 버전 설치 — 기존 python3 유지 (${py_cur:-python3})"
+        info "  실행: uv run python · 기본 python3 로 바꾸려면: uv python install --default"
+    else
+        fail "Python (uv python install)"
+    fi
+else
+    warn "uv not found — skipping Python install. Fix uv first, then re-run."
+fi
+
 # ── 7. npm global packages ────────────────────────────────
 install_npm() {
     local pkg="$1"
@@ -158,10 +197,12 @@ install_npm() {
     fi
 }
 
-# Claude Code and codex ship official native installers (standalone binaries
-# with background auto-update) — the vendor-recommended path. Install those
-# natively, independent of npm; gemini-cli / omc / omx stay on npm.
-# Both installers drop binaries in ~/.local/bin, already on PATH (see uv above).
+# Claude Code, codex and Antigravity CLI ship official native installers
+# (standalone binaries with background auto-update) — the vendor-recommended
+# path. Install those natively, independent of npm; omc / omx stay on npm.
+# All three drop binaries in ~/.local/bin, already on PATH (see uv above).
+# Antigravity CLI (agy) replaces @google/gemini-cli: Google stopped serving
+# Gemini CLI for free/Pro/Ultra accounts on 2026-06-18 (paid API keys only).
 install_native() {
     local name="$1" url="$2" sh="${3:-bash}" cmd="$4"
     # Native builds self-update in the background, so an existing install is
@@ -183,13 +224,20 @@ install_native() {
 
 install_native "Claude Code"    "https://claude.ai/install.sh"         bash claude
 install_native "codex (OpenAI)" "https://chatgpt.com/codex/install.sh" sh   codex
+install_native "Antigravity CLI (Google)" "https://antigravity.google/cli/install.sh" bash agy
 
 if command -v npm &>/dev/null; then
-    install_npm "@google/gemini-cli"
     install_npm "oh-my-claude-sisyphus"
     install_npm "oh-my-codex"
 else
-    warn "npm not found — skipping gemini-cli/omc/omx. Install Node.js first, then re-run."
+    warn "npm not found — skipping omc/omx. Install Node.js first, then re-run."
+fi
+
+# 예전 버전의 이 스크립트가 npm 으로 깔아둔 Gemini CLI 가 남아 있으면 알려만 준다
+# (유료 API 키로는 여전히 동작하므로 자동 삭제하지 않음).
+if command -v gemini &>/dev/null; then
+    warn "예전 Gemini CLI(gemini)가 남아 있습니다 — 2026-06-18부터 무료/Pro/Ultra 계정은 사용 불가(유료 API 키만 가능)."
+    warn "  Antigravity CLI(agy)가 대체합니다. 제거: npm uninstall -g @google/gemini-cli"
 fi
 
 # ── 7b. git-delta를 git pager로 (기존 설정 있으면 건드리지 않음) ──

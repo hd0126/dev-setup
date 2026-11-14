@@ -9,7 +9,39 @@
 아직 릴리스되지 않은 변경 사항이 여기 쌓입니다. 착수 전 아이디어는
 [BACKLOG.md](BACKLOG.md)에 있습니다.
 
+### Changed
+- **Gemini CLI → Antigravity CLI(`agy`)로 교체 (3-OS 공통)** — Google이 2026-06-18부터
+  무료·AI Pro·Ultra 계정의 Gemini CLI 요청을 받지 않아(유료 API 키·기업 라이선스만 유지),
+  기본 설치되던 `@google/gemini-cli`가 초보 사용자에겐 설치돼도 못 쓰는 도구가 됐다.
+  Google 공식 네이티브 인스톨러(`antigravity.google/cli/install.{sh,ps1}`)로 `agy`를
+  설치한다 — Node 불필요, 자체 업데이트. 예전에 npm으로 깔린 Gemini CLI는 자동 삭제하지
+  않고 안내만 출력한다.
+- **Python 버전 고정 제거 → uv가 최신 Python 설치 (3-OS 공통)** — Windows `Python.Python.3.12`
+  (winget)와 macOS `python@3.12`(brew) 고정이 3.15 출시 뒤에도 남아 있었다. 이제
+  `uv python install --default`로 최신 안정판을 `~/.local/bin`에 설치한다(구버전 uv 등
+  `--default` 실패 시 버전 명령만 만드는 기본 설치로 폴백). macOS의 Homebrew Python
+  libexec PATH 블록은 더 이상 추가하지 않는다(기존 `.zshrc`의 블록은 그대로 존중).
+  - **기존 Python 환경은 존중한다.** Windows는 PATH에 이미 진짜 Python이 있으면(Store판
+    포함 — 빈 스텁과는 `--version` 실행 결과로 구별) 건너뛴다. Linux/macOS는 `python3`가
+    `/usr/bin` 밖에서 잡히거나 `pip --user` 패키지가 있으면 `--default` 없이 버전 명령만
+    설치해 기본 `python3`를 그대로 둔다.
+  - **동작 변화(새 PC)**: 기존 환경이 없으면 새 터미널의 `python`/`python3`가 uv 관리
+    Python을 가리킨다(Linux/macOS의 시스템 `/usr/bin/python3`는 그대로 남는다). Windows는
+    `~\.local\bin`을 사용자 PATH에서 `...\Microsoft\WindowsApps`(스토어를 여는 `python.exe`
+    스텁)보다 앞에 둔다.
+- **Linux에서 `python3-pip` 설치 제거** — 최근 Ubuntu/Debian은 시스템 `pip install`을
+  PEP 668로 막아 초보가 첫 명령부터 에러를 본다. 패키지 설치는 uv로 통일(README 안내 갱신).
+- **Windows 네이티브 설치 분기 정리** — 네이티브 도구가 셋으로 늘면서, codex 전용인
+  symlink 우회·standalone 정리 재시도를 "Claude Code가 아니면"이 아니라 codex 여부로
+  판별하도록 변경(다른 도구 설치 실패 시 Codex 설치 폴더를 지우지 않도록).
+
 ### Fixed
+- **사용자 PATH에 폴더를 추가할 때 `%VAR%` 항목이 고정값으로 굳던 문제** — Claude Code
+  설치·zoxide 폴백에서 폴더를 PATH에 넣을 때 `[Environment]::GetEnvironmentVariable`로 읽은
+  (이미 확장된) 값을 다시 써서, `%JAVA_HOME%\bin`이나 Windows 기본 항목
+  `%USERPROFILE%\AppData\Local\Microsoft\WindowsApps` 같은 항목이 그 시점의 값으로 굳고
+  값 종류도 REG_EXPAND_SZ에서 REG_SZ로 바뀌었다. 레지스트리 원문과 값 종류를 보존하는
+  `Add-UserPath`로 교체.
 - **Windows one-liner 첫 줄 에러(`'﻿#' 용어는 ... 인식되지 않습니다`)** — `install.ps1`의
   UTF-8 BOM이 `irm | iex`에서 첫 `#`에 붙어 명령으로 해석됐다(PS 5.1·7 공통, 모든
   사용자). 파일 안에서 우회할 방법이 없어 BOM을 제거. PS 5.1에서 `-File`로 직접 실행하면

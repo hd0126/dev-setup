@@ -1,6 +1,6 @@
 # Dev Environment Setup (Windows · macOS · Linux)
 
-AI 코딩 CLI(Claude Code·Codex·Gemini)와 모던 터미널 도구를 한 줄로 설치하는 크로스플랫폼 부트스트랩입니다.
+AI 코딩 CLI(Claude Code·Codex·Antigravity)와 모던 터미널 도구를 한 줄로 설치하는 크로스플랫폼 부트스트랩입니다.
 
 > 🐛 **문제가 생겼나요?** → **[이슈 열기](https://github.com/hd0126/dev-setup/issues/new/choose)** (운영체제와 에러 메시지만 적으면 됩니다 — 초보 환영!)
 > 등록된 이슈는 관리자가 AI 봇 검토를 돌려 진단 코멘트나 수정 PR을 남깁니다.
@@ -38,7 +38,7 @@ AI 코딩 CLI(Claude Code·Codex·Gemini)와 모던 터미널 도구를 한 줄�
   - [🐙 Git](#-git)
   - [🐱 GitHub CLI](#-github-cli)
   - [🔵 Codex CLI](#-codex-cli)
-  - [💎 Gemini CLI](#-gemini-cli-googlegemini-cli)
+  - [💎 Antigravity CLI](#-antigravity-cli-agy)
   - [🔗 oh-my-codex](#-oh-my-codex-omx)
   - [🧩 oh-my-claude-sisyphus](#-oh-my-claude-sisyphus-omc)
 - [Claude Code 플러그인](#claude-code-플러그인-로그인-후-수동-실행)
@@ -60,9 +60,10 @@ irm https://raw.githubusercontent.com/hd0126/dev-setup/main/install.ps1 | iex
 ```
 
 자동으로 처리합니다:
-- PowerShell 7, Starship, zoxide, fzf, ripgrep, Node.js, Git, GitHub CLI, Python 3.12, uv 설치 (선택 가능)
+- PowerShell 7, Starship, zoxide, fzf, ripgrep, Node.js, Git, GitHub CLI, uv 설치 (선택 가능)
+- uv로 최신 Python 설치 (`uv python install --default` — 버전 고정 없음. 이미 Python이 있으면 그대로 둠)
 - JetBrainsMono Nerd Font 설치 + Windows Terminal 폰트 자동 설정 (선택 가능)
-- Claude Code (Anthropic 네이티브 인스톨러, 백그라운드 자동 업데이트), codex (OpenAI 네이티브 인스톨러, Node 불필요), @google/gemini-cli, oh-my-codex(omx) 설치 (선택 가능)
+- Claude Code (Anthropic 네이티브 인스톨러, 백그라운드 자동 업데이트), codex (OpenAI 네이티브 인스톨러, Node 불필요), Antigravity CLI `agy` (Google 네이티브 인스톨러, Node 불필요), oh-my-codex(omx) 설치 (선택 가능)
 - PowerShell 프로필 다운로드 및 적용 (기존 프로필은 타임스탬프 백업)
 
 > npm을 찾을 수 없으면 안내 메시지 출력 후 중단 — 재시작 후 재실행하면 됩니다.
@@ -92,19 +93,19 @@ curl -fsSL https://raw.githubusercontent.com/hd0126/dev-setup/main/install.sh | 
 > 실행 전에 스크립트 내용을 보고 싶다면 위 raw URL을 브라우저에서 열어 확인하세요.
 
 **Linux (Ubuntu/Debian)** 에서 자동으로 처리합니다:
-- apt로 curl, git, ripgrep, fzf, python3, python3-pip, unzip 설치; gh는 GitHub 공식 apt 저장소를 추가해 설치 (시스템 기본 버전 유지)
+- apt로 curl, git, ripgrep, fzf, python3, unzip 설치; gh는 GitHub 공식 apt 저장소를 추가해 설치 (시스템 기본 버전 유지)
 - NodeSource 저장소로 Node.js LTS 설치 (npm 전역 prefix를 `~/.npm-global`로 설정 → sudo 없이 `npm install -g`)
-- curl로 Starship, zoxide, uv 설치
+- curl로 Starship, zoxide, uv 설치 → uv로 최신 Python 설치 (`~/.local/bin`의 `python`/`python3`, 시스템 python3는 그대로)
 - [쾌적함 플러스 도구](#-쾌적함-플러스-도구): zsh-autosuggestions · zsh-syntax-highlighting · eza · bat · fd · git-delta · tealdeer (apt에 없는 배포판은 자동 skip)
-- claude·codex는 공식 네이티브 인스톨러로, gemini-cli·omc·omx는 npm으로 설치
+- claude·codex·agy(Antigravity CLI)는 공식 네이티브 인스톨러로, omc·omx는 npm으로 설치
 - `.bashrc` / `.zshrc`에 `cc`, `ccc`, `ccr`, zoxide, fzf, starship 설정 추가
 
 **macOS** 에서 자동으로 처리합니다:
 - Homebrew 없으면 자동 설치
-- brew로 git, gh, ripgrep, fzf, zoxide, starship, python, uv, node 설치
+- brew로 git, gh, ripgrep, fzf, zoxide, starship, uv, node 설치 → uv로 최신 Python 설치 (`~/.local/bin`의 `python`/`python3`)
 - [쾌적함 플러스 도구](#-쾌적함-플러스-도구): zsh-autosuggestions · zsh-syntax-highlighting · zsh-history-substring-search · eza · bat · fd · git-delta · tealdeer
 - JetBrainsMono Nerd Font 설치 (아이콘 깨짐 방지 — 터미널 앱 폰트는 직접 변경 필요)
-- claude·codex는 공식 네이티브 인스톨러로, gemini-cli·omc·omx는 npm으로 설치
+- claude·codex·agy(Antigravity CLI)는 공식 네이티브 인스톨러로, omc·omx는 npm으로 설치
 - `.zshrc`에 `cc`, `ccc`, `ccr`, zoxide, fzf, starship 설정 추가
 - SSH는 macOS 키체인이 자동 관리 (별도 설정 불필요)
 
@@ -503,7 +504,7 @@ cc '이 코드 리뷰해줘'
 ---
 
 ### 🟩 Node.js LTS
-JavaScript 런타임. gemini-cli · omx 등 npm CLI 설치에 필요 (codex · Claude Code는 네이티브라 불필요).
+JavaScript 런타임. omx 등 npm CLI 설치에 필요 (Claude Code · codex · Antigravity CLI는 네이티브라 불필요).
 
 ```
 node --version
@@ -513,19 +514,23 @@ npm install -g <패키지>
 ---
 
 ### 🐍 Python
-범용 프로그래밍 언어. 데이터 분석·자동화·AI 개발에 널리 사용. Windows는 3.12(winget), macOS는 brew python, Linux는 배포판 python3가 설치됩니다.
+범용 프로그래밍 언어. 데이터 분석·자동화·AI 개발에 널리 사용. 세 OS 모두 **uv가 최신 안정판 Python을 직접 설치·관리**합니다 (`uv python install --default` — 특정 버전을 고정하지 않으므로 스크립트가 낡지 않습니다).
 
-```powershell
-# Windows
-python --version
-pip install <패키지>
-```
+- 실행 파일은 `~/.local/bin`(Windows: `%USERPROFILE%\.local\bin`)에 `python` · `python3` · `python3.x`로 놓입니다.
+- **기존 Python 환경은 건드리지 않습니다** (기본 `python`이 말없이 바뀌어 기존 환경이 깨지는 것을 방지):
+  - **Windows**: 이미 다른 Python이 PATH에 있으면(Microsoft Store판 포함) uv 설치를 건너뛰고 그대로 둡니다.
+  - **Linux / macOS**: `python3`가 시스템 기본(`/usr/bin`)이 아닌 곳에서 잡히거나(pyenv · conda · brew python 등) `pip --user`로 깐 패키지가 있으면, 최신 Python은 `python3.x` 버전 명령으로만 설치하고 기본 `python3`는 그대로 둡니다.
+  - 이 경우 최신 Python은 `uv run python`으로 실행하고, 기본값으로 바꾸려면 `uv python install --default`를 직접 실행하세요.
+- 기존 환경이 없는 새 PC에서는 새 터미널의 `python` · `python3`가 uv 관리 Python을 가리킵니다 (Linux/macOS의 시스템 `/usr/bin/python3`는 그대로 남습니다).
 
 ```bash
-# macOS / Linux — 명령은 python3, 패키지는 uv 사용을 권장
-python3 --version
-uv pip install <패키지>     # 또는 python3 -m pip install <패키지>
+python --version            # 새 PC 기준: uv가 설치한 최신 Python
+uv python list              # 설치된/설치 가능한 버전 보기
+uv python install 3.13      # 다른 버전 추가 설치
+uv python upgrade           # 패치 버전 업그레이드
 ```
+
+> ⚠️ **전역 `pip install` 대신 uv를 쓰세요.** 최근 Ubuntu/Debian의 시스템 Python은 전역 `pip install`을 막아 둡니다(externally-managed 에러). uv가 설치한 Python에서도 전역에 섞어 깔기보다 프로젝트별 환경을 쓰는 편이 안전합니다. 패키지는 아래 [uv](#-uv)로 설치하세요 — 프로젝트면 `uv add <패키지>`, 가상환경이면 `uv venv` 후 `uv pip install <패키지>`.
 
 ---
 
@@ -581,14 +586,26 @@ codex login                   # OpenAI 계정 로그인
 
 ---
 
-### 💎 Gemini CLI (`@google/gemini-cli`)
-Google Gemini AI 어시스턴트. 첫 실행 시 브라우저 OAuth 자동 실행 (Google 계정 로그인).
+### 💎 Antigravity CLI (`agy`)
+Google의 터미널 코딩 에이전트. **Gemini CLI의 후속**입니다. Node 불필요, 백그라운드 자동 업데이트. 첫 실행 시 브라우저가 열려 Google 계정으로 로그인합니다.
+
+네이티브 인스톨러로 설치 (설치 스크립트가 자동 실행 — 수동 설치 시):
+
+```powershell
+# Windows
+irm https://antigravity.google/cli/install.ps1 | iex
+```
 
 ```bash
-gemini                        # 대화형 모드 실행
-gemini '이 코드 설명해줘'     # 한 줄 명령으로 실행
-gemini '리팩토링 해줘'
+# macOS / Linux
+curl -fsSL https://antigravity.google/cli/install.sh | bash
 ```
+
+```bash
+agy                           # 대화형 모드 실행 (첫 실행 시 로그인)
+```
+
+> ℹ️ **Gemini CLI(`@google/gemini-cli`)를 쓰던 분께**: Google이 2026-06-18부터 무료 · AI Pro · Ultra 계정의 Gemini CLI 요청을 받지 않습니다(유료 API 키 · 기업 라이선스만 유지). 그래서 이 스크립트는 더 이상 Gemini CLI를 설치하지 않습니다. 예전에 설치된 것은 자동으로 지우지 않으니, 필요 없으면 `npm uninstall -g @google/gemini-cli`로 제거하세요. 이전 방법은 [공식 마이그레이션 안내](https://antigravity.google/docs/gcli-migration)를 참고하세요.
 
 ---
 

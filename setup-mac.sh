@@ -56,8 +56,44 @@ install_brew ripgrep
 install_brew fzf
 install_brew zoxide
 install_brew starship
-install_brew python@3.12
 install_brew uv
+
+# ── 2a. Python (latest, managed by uv) ────────────────────
+# brew 로 python@<버전>을 고정 설치하지 않는다 — 고정값은 금방 낡는다(3.12 고정이
+# 3.15 시대까지 남아 있었다). uv 가 항상 최신 안정판을 ~/.local/bin 에 설치한다.
+# --default 는 버전 명령(python3.x) 외에 python/python3 도 만들어, 새 터미널의
+# 기본 python3 가 uv 관리본이 된다. 이미 Python 환경을 쓰고 있는 사용자의 기본값을
+# 말없이 바꾸면 안 되므로, 아래 둘 중 하나라도 해당하면 --default 없이 버전 명령만
+# 설치한다:
+#   * python3 가 시스템 기본(/usr/bin, Xcode CLT)이 아닌 곳에서 잡힌다 — 예전 버전의
+#     이 스크립트가 깔아둔 brew python@3.12, 다른 brew python, pyenv·conda 등
+#   * pip --user 로 설치한 패키지가 있다 (~/Library/Python/*/lib/python/site-packages)
+if command -v uv &>/dev/null; then
+    info "Installing latest Python via uv..."
+    py_cur="$(command -v python3 2>/dev/null || true)"
+    py_default=1
+    # -ef(같은 파일인지)로 비교: PATH 항목 끝의 슬래시 등 표기 차이에 흔들리지 않는다.
+    # ~/.local/bin/python3 는 이전 실행에서 uv 가 만든 것이므로 기존 환경으로 치지 않는다.
+    if [ -n "$py_cur" ] && [ "$py_cur" != /usr/bin/python3 ] && ! [ "$py_cur" -ef "$HOME/.local/bin/python3" ]; then
+        py_default=0
+    fi
+    if ls "$HOME"/Library/Python/*/lib/python/site-packages/* &>/dev/null; then py_default=0; fi
+
+    if [ "$py_default" = 1 ]; then
+        if uv python install --default || { warn "--default 설치 실패 — 버전 명령만 설치로 재시도"; uv python install; }; then
+            ok "Python (uv): $("$HOME/.local/bin/python3" --version 2>/dev/null || echo "installed — run with: uv run python")"
+        else
+            fail "Python (uv python install)"
+        fi
+    elif uv python install; then
+        ok "Python (uv): 최신 버전 설치 — 기존 python3 유지 (${py_cur:-python3})"
+        info "  실행: uv run python · 기본 python3 로 바꾸려면: uv python install --default"
+    else
+        fail "Python (uv python install)"
+    fi
+else
+    warn "uv not found — skipping Python install. Fix uv first, then re-run."
+fi
 
 # 쾌적함 플러스 (전부 시작속도 영향 미미 또는 0)
 install_brew zsh-autosuggestions        # 히스토리 기반 회색 자동제안
@@ -133,9 +169,11 @@ install_npm() {
     fi
 }
 
-# Claude Code and codex ship official native installers (standalone binaries
-# with background auto-update) — the vendor-recommended path. Install those
-# natively, independent of npm; gemini-cli / omc / omx stay on npm.
+# Claude Code, codex and Antigravity CLI ship official native installers
+# (standalone binaries with background auto-update) — the vendor-recommended
+# path. Install those natively, independent of npm; omc / omx stay on npm.
+# Antigravity CLI (agy) replaces @google/gemini-cli: Google stopped serving
+# Gemini CLI for free/Pro/Ultra accounts on 2026-06-18 (paid API keys only).
 install_native() {
     local name="$1" url="$2" sh="${3:-bash}" cmd="$4"
     # Native builds self-update in the background, so an existing install is
@@ -157,13 +195,20 @@ install_native() {
 
 install_native "Claude Code"    "https://claude.ai/install.sh"         bash claude
 install_native "codex (OpenAI)" "https://chatgpt.com/codex/install.sh" sh   codex
+install_native "Antigravity CLI (Google)" "https://antigravity.google/cli/install.sh" bash agy
 
 if command -v npm &>/dev/null; then
-    install_npm "@google/gemini-cli"
     install_npm "oh-my-claude-sisyphus"
     install_npm "oh-my-codex"
 else
-    warn "npm not found — skipping gemini-cli/omc/omx. Install Node.js first, then re-run."
+    warn "npm not found — skipping omc/omx. Install Node.js first, then re-run."
+fi
+
+# 예전 버전의 이 스크립트가 npm 으로 깔아둔 Gemini CLI 가 남아 있으면 알려만 준다
+# (유료 API 키로는 여전히 동작하므로 자동 삭제하지 않음).
+if command -v gemini &>/dev/null; then
+    warn "예전 Gemini CLI(gemini)가 남아 있습니다 — 2026-06-18부터 무료/Pro/Ultra 계정은 사용 불가(유료 API 키만 가능)."
+    warn "  Antigravity CLI(agy)가 대체합니다. 제거: npm uninstall -g @google/gemini-cli"
 fi
 
 # ── 5b. git-delta를 git pager로 (기존 설정 있으면 건드리지 않음) ──
@@ -345,18 +390,11 @@ EOF
     append_zshrc 'brew shellenv' "Homebrew shellenv" "$BLOCK"
 fi
 
-# Homebrew python@3.12는 무버전 명령(python3/pip3)을 기본 bin이 아닌
-# libexec/bin에만 둔다 — PATH에 없으면 CLT의 /usr/bin/python3가 잡힌다.
-# autosuggestions 블록처럼 양쪽 prefix를 하드코딩(브루 셸env 로드 순서 무관).
-IFS= read -r -d '' BLOCK <<'EOF' || true
-# ── Homebrew Python (python3/pip3 → python@3.12) ─────────
-if [ -d /opt/homebrew/opt/python@3.12/libexec/bin ]; then
-    export PATH="/opt/homebrew/opt/python@3.12/libexec/bin:$PATH"
-elif [ -d /usr/local/opt/python@3.12/libexec/bin ]; then
-    export PATH="/usr/local/opt/python@3.12/libexec/bin:$PATH"
-fi
-EOF
-append_zshrc 'python@3\.12/libexec' "Homebrew Python PATH (python3/pip3)" "$BLOCK"
+# Python 은 uv 가 ~/.local/bin 에 python/python3 를 두므로(위 2a) 별도 PATH 블록이
+# 필요 없다 — 위의 ~/.local/bin 블록이 CLT 의 /usr/bin/python3 보다 앞에 놓는다.
+# (예전의 Homebrew python@3.12 libexec PATH 블록은 더 이상 추가하지 않는다. 이미
+#  .zshrc 에 그 블록이 있는 사용자는 그대로 존중된다 — 스크립트가 지우지 않고, 위 2a 도
+#  그 python3 를 기본값으로 남겨 둔다.)
 
 # syntax-highlighting은 모든 위젯 로드 후 마지막에 source해야 하고,
 # history-substring-search는 그보다도 뒤여야 함 (플러그인 공식 권장 순서)

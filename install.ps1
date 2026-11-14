@@ -33,6 +33,74 @@ function Remove-TempPath {
     }
 }
 
+# 사용자 PATH 원문을 레지스트리에서 직접 읽고 쓴다.
+# [Environment]::GetEnvironmentVariable 은 %JAVA_HOME%\bin 같은 항목을 확장해서 돌려준다.
+# 그 값을 그대로 다시 쓰면 그 항목들이 오늘의 값으로 굳는다 (REG_EXPAND_SZ -> REG_SZ).
+# Windows 기본 항목 %USERPROFILE%\AppData\Local\Microsoft\WindowsApps 도 같은 피해를 본다.
+# 그래서 확장하지 않은 원문과 값 종류를 그대로 보존한다.
+function Get-UserPathRaw {
+    $raw  = ''
+    $kind = [Microsoft.Win32.RegistryValueKind]::ExpandString
+    $key  = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
+    if ($key) {
+        try {
+            if ($key.GetValueNames() -contains 'Path') {
+                $raw = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+                $k   = $key.GetValueKind('Path')
+                if ($k -eq [Microsoft.Win32.RegistryValueKind]::String) { $kind = $k }
+            }
+        } finally { $key.Close() }
+    }
+    return @{ Value = $raw; Kind = $kind }
+}
+
+function Set-UserPathRaw {
+    param([string]$Value, $Kind)
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+    try { $key.SetValue('Path', $Value, $Kind) } finally { $key.Close() }
+    # 레지스트리 직접 쓰기는 변경 알림(WM_SETTINGCHANGE)을 보내지 않는다. 존재하지 않는
+    # 변수를 지우는 무해한 호출로 알림만 발생시켜, 새로 여는 터미널이 바뀐 PATH 를 받게 한다.
+    try { [Environment]::SetEnvironmentVariable('DEVSETUP_PATH_REFRESH', $null, 'User') } catch {}
+}
+
+# 사용자 PATH(레지스트리)와 현재 세션 PATH에 폴더를 멱등하게 추가한다. 관리자 권한 불필요.
+# 사용자 PATH가 실제로 바뀌었으면 $true 를 돌려준다.
+#
+# -BeforeStoreAliases: Windows 의 "앱 실행 별칭" 폴더(...\Microsoft\WindowsApps)보다
+# 앞에 오도록 맨 앞에 둔다. 그 폴더의 python.exe 는 Microsoft Store 를 여는 스텁이라,
+# 우리 폴더가 뒤에 있으면 `python` 을 쳤을 때 설치한 Python 대신 스텁이 잡힌다.
+function Add-UserPath {
+    param([string]$Dir, [switch]$BeforeStoreAliases)
+    $want  = $Dir.TrimEnd('\')
+    $cur   = Get-UserPathRaw
+    $parts = @($cur.Value -split ';' | Where-Object { $_ })
+    $idx = -1; $storeIdx = -1
+    for ($i = 0; $i -lt $parts.Count; $i++) {
+        # 비교는 확장한 값으로, 저장은 원문 그대로 (%USERPROFILE%\... 항목 보존).
+        $p = [Environment]::ExpandEnvironmentVariables($parts[$i]).TrimEnd('\')
+        if ($idx -lt 0 -and $p -ieq $want) { $idx = $i }
+        if ($storeIdx -lt 0 -and $p -like '*\Microsoft\WindowsApps') { $storeIdx = $i }
+    }
+
+    $newParts = $null
+    if ($idx -lt 0) {
+        $newParts = if ($BeforeStoreAliases) { @($Dir) + $parts } else { $parts + @($Dir) }
+    } elseif ($BeforeStoreAliases -and $storeIdx -ge 0 -and $idx -gt $storeIdx) {
+        $rest = @(for ($i = 0; $i -lt $parts.Count; $i++) { if ($i -ne $idx) { $parts[$i] } })
+        $newParts = @($Dir) + $rest
+    }
+    $changed = ($null -ne $newParts)
+    if ($changed) { Set-UserPathRaw -Value ($newParts -join ';') -Kind $cur.Kind }
+
+    $sessionParts = @($env:Path -split ';' | ForEach-Object { $_.TrimEnd('\') })
+    if ($BeforeStoreAliases) {
+        if ($sessionParts.Count -eq 0 -or $sessionParts[0] -ine $want) { $env:Path = "$Dir;$env:Path" }
+    } elseif ($sessionParts -inotcontains $want) {
+        $env:Path = $env:Path.TrimEnd(';') + ";$Dir"
+    }
+    return $changed
+}
+
 # ── Non-interactive / dry-run (unattended installs and CI) ──────────────────
 # Set these env vars BEFORE running (works with the irm | iex one-liner too):
 #   $env:DEVSETUP_NONINTERACTIVE=1  -> skip the selection menu, install the defaults
@@ -45,7 +113,7 @@ $packages = @(
     @{
         Id   = "OpenJS.NodeJS.LTS"
         Name = "Node.js LTS"
-        Desc = "JS runtime. Required for codex, gemini-cli, omc, omx."
+        Desc = "JS runtime. Required for omx (Claude Code, codex and Antigravity are native - no Node needed)."
         Ex   = "node --version / npm install -g <pkg>"
         On   = $true
     },
@@ -107,18 +175,14 @@ $packages = @(
         Ex   = "rg 'function' src/"
         On   = $true
     },
-    @{
-        Id   = "Python.Python.3.12"
-        Name = "Python 3.12"
-        Desc = "General purpose language. Data, automation, AI."
-        Ex   = "python --version / pip install <pkg>"
-        On   = $true
-    },
+    # Python 은 winget 으로 특정 버전을 고정 설치하지 않는다. 고정값은 금방 낡는다.
+    # (3.12 고정이 3.15 시대까지 남아 있었다.) uv 가 최신 Python 을 직접 받아 관리한다.
+    # 아래 "Python via uv" 단계 참고. 버전 하드코딩 금지.
     @{
         Id   = "astral-sh.uv"
-        Name = "uv"
-        Desc = "Fast Python package and project manager (pip/venv replacement)."
-        Ex   = "uv venv / uv pip install <pkg>"
+        Name = "uv + Python"
+        Desc = "Fast Python manager (pip/venv replacement). Also installs the latest Python itself (uv python install)."
+        Ex   = "python --version / uv venv / uv pip install <pkg>"
         On   = $true
     }
 )
@@ -140,11 +204,15 @@ $npmPackages = @(
         Native    = $true
         Installer = "https://chatgpt.com/codex/install.ps1"
     },
+    # Gemini CLI(@google/gemini-cli)의 후속. Google 이 2026-06-18 부터 무료/Pro/Ultra
+    # 계정의 Gemini CLI 요청을 받지 않아(유료 API 키만 유지) Antigravity CLI 로 교체했다.
     @{
-        Name = "@google/gemini-cli"
-        Desc = "Google Gemini CLI."
-        Ex   = "gemini 'explain this code'"
-        On   = $true
+        Name      = "Antigravity CLI (Google)"
+        Desc      = "Google's terminal coding agent (agy) - successor to Gemini CLI. Native installer, no Node dependency, self-updating."
+        Ex        = "agy"
+        On        = $true
+        Native    = $true
+        Installer = "https://antigravity.google/cli/install.ps1"
     },
     @{
         Name = "oh-my-codex"
@@ -369,16 +437,78 @@ if ($zoxidePkg -and $zoxidePkg.On -and -not $DryRun -and -not (Get-Command zoxid
         New-Item -ItemType Directory -Force -Path $binDir | Out-Null
         Copy-Item $exe.FullName (Join-Path $binDir 'zoxide.exe') -Force
         # Persist on the user PATH (no admin needed) and add to the current session.
-        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-        if ($userPath -notlike "*$binDir*") {
-            [Environment]::SetEnvironmentVariable('Path', "$userPath;$binDir", 'User')
-        }
-        $env:Path += ";$binDir"
+        Add-UserPath $binDir | Out-Null
         $failedPkgs = @($failedPkgs | Where-Object { $_ -notlike 'zoxide*' })
         Write-Host "  zoxide $($rel.tag_name) installed to $binDir and added to PATH." -ForegroundColor Green
     } catch {
         Write-Host "  zoxide fallback failed: $($_.Exception.Message)" -ForegroundColor Red
         Write-Host "  Install manually from https://github.com/ajeetdsouza/zoxide/releases" -ForegroundColor DarkGray
+    }
+}
+
+# ── Python via uv ─────────────────────────────────────────
+# winget 으로 Python 버전을 고정 설치하는 대신 uv 가 최신 Python 을 받아 관리한다.
+# --default 는 버전 명령(python3.x) 외에 `python`/`python3` 까지 만든다.
+#   * 이미 진짜 Python 이 PATH 에 있으면(스토어 스텁·uv 관리본 제외) 그대로 둔다 -
+#     기본 python 을 말없이 바꾸면 기존 전역 패키지 환경이 깨질 수 있다.
+#   * 실행 파일은 ~\.local\bin 에 놓이므로 스토어 스텁보다 앞에 오도록 PATH 를 맞춘다.
+$uvPkg = $packages | Where-Object { $_.Id -eq 'astral-sh.uv' }
+if ($uvPkg -and $uvPkg.On) {
+    Write-Host "Python (latest, managed by uv)..." -ForegroundColor Cyan -NoNewline
+    $localBin = Join-Path $env:USERPROFILE '.local\bin'
+    $uvCmd    = Get-Command uv -ErrorAction SilentlyContinue
+    if ($DryRun) {
+        Write-Host " [DRY-RUN] would run: uv python install --default" -ForegroundColor DarkGray
+    } elseif (-not $uvCmd) {
+        # uv 설치 실패는 위 winget 단계에서 이미 실패 목록에 들어갔다 - 중복 집계하지 않는다.
+        Write-Host " [SKIP] uv not found" -ForegroundColor Yellow
+    } else {
+        # ...\Microsoft\WindowsApps\python.exe 는 두 가지일 수 있다: Store 를 여는 빈 스텁,
+        # 또는 Microsoft Store / Python Install Manager 로 설치한 진짜 Python 의 별칭.
+        # 경로만으로는 구별이 안 되므로 실제로 --version 을 돌려 본다 (스텁은 exit 9009).
+        $realPy = $null
+        foreach ($cand in @(Get-Command python -All -ErrorAction SilentlyContinue)) {
+            $src = $cand.Source
+            if (-not $src -or $src -like "$localBin\*") { continue }
+            if ($src -like '*\Microsoft\WindowsApps\*') {
+                $isReal = $false
+                try {
+                    $verOut = (& $src --version 2>&1 | Out-String)
+                    $isReal = ($LASTEXITCODE -eq 0 -and $verOut -match 'Python \d+\.\d+')
+                } catch {}
+                if (-not $isReal) { continue }
+            }
+            $realPy = $cand; break
+        }
+        if ($realPy) {
+            Write-Host " [OK - existing Python kept: $($realPy.Source)]" -ForegroundColor Green
+            Write-Host "  To switch to the latest later:  uv python install --default" -ForegroundColor DarkGray
+        } else {
+            $withDefault = $true
+            $pyOut = & $uvCmd.Source python install --default 2>&1 | Out-String
+            if ($LASTEXITCODE -ne 0) {
+                # 구버전 uv 등 --default 를 못 쓰는 환경: 버전 명령만 만드는 기본 설치로 폴백.
+                $withDefault = $false
+                $pyOut = & $uvCmd.Source python install 2>&1 | Out-String
+            }
+            if ($LASTEXITCODE -eq 0) {
+                Add-UserPath $localBin -BeforeStoreAliases | Out-Null
+                $pyExe = Join-Path $localBin 'python.exe'
+                $pyVer = if (Test-Path $pyExe) { (& $pyExe --version 2>&1 | Out-String).Trim() } else { '' }
+                if ($withDefault -and $pyVer) {
+                    Write-Host " [OK - $pyVer]" -ForegroundColor Green
+                } else {
+                    Write-Host " [OK]" -ForegroundColor Green
+                    Write-Host "  'python' shortcut was not created - run Python with:  uv run python" -ForegroundColor DarkGray
+                }
+            } else {
+                Write-Host " [FAILED] exit $LASTEXITCODE" -ForegroundColor Red
+                $failedPkgs += "Python via uv (exit $LASTEXITCODE)"
+                $pyLog = Join-Path $env:TEMP 'omc-install-python-uv.log'
+                $pyOut | Out-File -FilePath $pyLog -Encoding utf8
+                Write-Host "    full log saved to: $pyLog" -ForegroundColor DarkGray
+            }
+        }
     }
 }
 
@@ -432,13 +562,21 @@ if ($selectedNpm) {
             # 실제 설치 경로는 도구마다 다르다: Claude Code 는 ~/.local\bin\claude.exe,
             # codex 는 %LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe 에 설치된다.
             # (이전엔 codex 도 ~/.local\bin 으로 잘못 확인해 항상 재설치를 시도했다.)
+            # Antigravity CLI 는 %LOCALAPPDATA%\agy\bin\agy.exe (공식 install.ps1 의 TARGET_DIR).
             if ($pkg.Name -eq 'Claude Code') {
                 $nativeBin = Join-Path $env:USERPROFILE '.local\bin\claude.exe'
                 $nativeCmd = 'claude'; $npmName = '@anthropic-ai/claude-code'
+            } elseif ($pkg.Name -like 'Antigravity*') {
+                $nativeBin = Join-Path $env:LOCALAPPDATA 'agy\bin\agy.exe'
+                $nativeCmd = 'agy';    $npmName = $null   # npm 판이 없다 (Gemini CLI 는 별개 패키지)
             } else {
                 $nativeBin = Join-Path $env:LOCALAPPDATA 'Programs\OpenAI\Codex\bin\codex.exe'
                 $nativeCmd = 'codex';  $npmName = '@openai/codex'
             }
+            # 아래 symlink 우회·standalone 정리 재시도는 codex 전용이다.
+            # 이름 비교를 "Claude Code 가 아니면"으로 하면, 다른 네이티브 도구 설치가
+            # 실패했을 때 멀쩡한 Codex 설치 폴더를 지우게 된다. codex 여부를 명시적으로 판별한다.
+            $isCodex = ($nativeCmd -eq 'codex')
 
             # 이미 네이티브로 설치돼 있으면 대용량 재다운로드 skip — 네이티브 빌드는
             # 백그라운드 자동 업데이트가 있어 기존 설치로 충분 (mac/linux와 동일 동작)
@@ -450,7 +588,7 @@ if ($selectedNpm) {
             # 비-native(npm/bun) 설치본이 있으면 먼저 제거하고 native 로 교체한다.
             # 안 지우면 PATH 순서로 어느 쪽 codex/claude 가 실행될지 애매해진다.
             $existingCmd = Get-Command $nativeCmd -ErrorAction SilentlyContinue
-            if ($existingCmd -and ($existingCmd.Source -match 'node_modules|\\npm\\|\.bun\\')) {
+            if ($npmName -and $existingCmd -and ($existingCmd.Source -match 'node_modules|\\npm\\|\.bun\\')) {
                 Write-Host ""
                 Write-Host "  removing non-native $nativeCmd at $($existingCmd.Source) ..." -ForegroundColor Yellow
                 $npmRm = Get-Command npm.cmd -ErrorAction SilentlyContinue
@@ -472,7 +610,7 @@ if ($selectedNpm) {
             $savedTemp = $env:TEMP; $savedTmp = $env:TMP
             $savedCodexHome = $env:CODEX_HOME; $savedNI = $env:CODEX_NON_INTERACTIVE
             $env:CODEX_NON_INTERACTIVE = '1'   # "Start Codex now?" Read-Host 멈춤 방지
-            if ($pkg.Name -ne 'Claude Code' -and $profileIsLink) {
+            if ($isCodex -and $profileIsLink) {
                 $env:CODEX_HOME = Join-Path $profReal '.codex'
                 $realTemp = Join-Path $profReal 'AppData\Local\Temp'
                 if (Test-Path $realTemp) { $env:TEMP = $realTemp; $env:TMP = $realTemp }
@@ -488,7 +626,7 @@ if ($selectedNpm) {
 
                 # codex 에 표기 충돌(ASCII vs 한글)로 남은 옛 정션이 있으면 "Refusing to
                 # retarget junction" 으로 실패한다. standalone 을 정리하고 1회 재시도.
-                if ($pkg.Name -ne 'Claude Code' -and -not (Test-Path $nativeBin) -and $profileIsLink) {
+                if ($isCodex -and -not (Test-Path $nativeBin) -and $profileIsLink) {
                     Write-Host "  retry (clean standalone)..." -ForegroundColor DarkGray
                     Remove-Item (Join-Path $env:CODEX_HOME 'packages\standalone') -Recurse -Force -ErrorAction SilentlyContinue
                     Remove-Item (Join-Path $env:LOCALAPPDATA 'Programs\OpenAI\Codex') -Recurse -Force -ErrorAction SilentlyContinue
@@ -505,14 +643,13 @@ if ($selectedNpm) {
                     # %USERPROFILE%\.local\bin but, unlike codex, does NOT add that
                     # folder to PATH. Persist it (and add to this session) so the
                     # `claude` command resolves after install / in a new terminal.
-                    if ($pkg.Name -eq 'Claude Code') {
-                        $localBin = Join-Path $env:USERPROFILE '.local\bin'
-                        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-                        if ($userPath -notlike "*$localBin*") {
-                            [Environment]::SetEnvironmentVariable('Path', ($userPath.TrimEnd(';') + ';' + $localBin), 'User')
-                            Write-Host "     added $localBin to your PATH" -ForegroundColor DarkGray
+                    # Antigravity's installer hands PATH setup to `agy install`; the same
+                    # idempotent call is a safety net in case that step was skipped.
+                    if (-not $isCodex) {
+                        $nativeDir = Split-Path $nativeBin
+                        if (Add-UserPath $nativeDir) {
+                            Write-Host "     added $nativeDir to your PATH" -ForegroundColor DarkGray
                         }
-                        if ($env:Path -notlike "*$localBin*") { $env:Path += ";$localBin" }
                     }
                 } else {
                     Write-Host "  -> $($pkg.Name) [FAILED] native installer (log: $nativeLog)" -ForegroundColor Red
@@ -591,6 +728,17 @@ if ($selectedNpm) {
             }
         }
     }
+}
+
+# ── Gemini CLI leftover note ──────────────────────────────
+# 예전 버전의 이 스크립트가 npm 으로 깔아둔 Gemini CLI 가 남아 있으면 알려만 준다.
+# 유료 API 키로는 여전히 동작하므로 자동으로 지우지는 않는다.
+$agySelected = $npmPackages | Where-Object { $_.On -and $_.Name -like 'Antigravity*' }
+if ($agySelected -and -not $DryRun -and (Get-Command gemini -ErrorAction SilentlyContinue)) {
+    Write-Host ""
+    Write-Host "Note: the old Gemini CLI (gemini) is still installed." -ForegroundColor Yellow
+    Write-Host "  Google stopped serving it for free/Pro/Ultra accounts on 2026-06-18 (paid API keys still work)." -ForegroundColor DarkGray
+    Write-Host "  Antigravity CLI (agy) replaces it. To remove the old one:  npm uninstall -g @google/gemini-cli" -ForegroundColor DarkGray
 }
 
 # ── oh-my-codex (omx) Windows caveat ──────────────────────
@@ -818,7 +966,7 @@ if ($DryRun) {
         $c = Get-Command $n -ErrorAction SilentlyContinue
         if ($c) { return "- ${n}: $($c.Source)" } else { return "- ${n}: (not found)" }
     }
-    $toolLines = @('node','npm','git','codex','claude','winget','python','uv') | ForEach-Object { Get-CmdInfo $_ }
+    $toolLines = @('node','npm','git','codex','claude','agy','winget','python','uv') | ForEach-Object { Get-CmdInfo $_ }
 
     $reportBody = @"
 ## 환경 (Environment)
