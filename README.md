@@ -15,6 +15,7 @@ Claude Code · Codex · Antigravity 와 빠르고 편한 터미널 도구를 한
 </div>
 
 > 🐛 **막혔나요?** [이슈 열기](https://github.com/hd0126/dev-setup/issues/new/choose) — 운영체제와 에러 메시지만 적어 주세요 (초보 환영!). 설치가 실패하면 스크립트가 내용이 채워진 이슈 링크를 바로 보여 줍니다.
+>
 > ⭐ 도움이 됐다면 우측 상단 **Star**를 눌러 주세요.
 
 ---
@@ -22,7 +23,7 @@ Claude Code · Codex · Antigravity 와 빠르고 편한 터미널 도구를 한
 ## 🧭 한눈에 보기
 
 ```mermaid
-flowchart LR
+flowchart TB
     I(["⌨️ 명령 한 줄"]) --> AI
     I --> SH
     I --> FIND
@@ -33,7 +34,7 @@ flowchart LR
         CC["Claude Code"]
         CX["Codex CLI"]
         AG["Antigravity CLI"]
-        OM["omc · omx<br/>멀티에이전트 확장"]
+        OM["omc · omx 확장"]
     end
 
     subgraph SH["🐚 터미널을 편하게"]
