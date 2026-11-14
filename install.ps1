@@ -113,7 +113,7 @@ $packages = @(
     @{
         Id   = "OpenJS.NodeJS.LTS"
         Name = "Node.js LTS"
-        Desc = "JS runtime. Required for omx (Claude Code, codex and Antigravity are native - no Node needed)."
+        Desc = "JS runtime. Keep this on: the omc plugin's hooks, omx and npx-based MCP servers all run on Node (Claude Code itself is native)."
         Ex   = "node --version / npm install -g <pkg>"
         On   = $true
     },
@@ -139,17 +139,24 @@ $packages = @(
         Ex   = "pwsh"
         On   = $true
     },
+    # Off by default on Windows: the profile draws its own pure-PowerShell prompt and
+    # never uses Starship. Enabling Starship runs an external exe on every prompt, which
+    # measured 1.6-2.0 s per prompt on a PC with real-time antivirus scanning
+    # (pure-PS prompt: 17-103 ms). Still selectable for people who want it.
     @{
         Id   = "Starship.Starship"
         Name = "Starship"
-        Desc = "Fast prompt. NOTE: this profile uses its own pure-PS prompt for speed; Starship is installed but idle until you enable it (see README)."
+        Desc = "Optional prompt (off by default). This profile uses its own faster pure-PS prompt; Starship stays idle until you enable it (see README)."
         Ex   = "'Invoke-Expression (&starship init powershell)' | Add-Content `$PROFILE"
-        On   = $true
+        On   = $false
     },
+    # Keep on even without Starship: the legacy console's default font (Consolas) has
+    # no glyph for the prompt arrow U+276F, so it shows as a box there. Windows
+    # Terminal's default (Cascadia Mono) has it; the Nerd Font covers both.
     @{
         Id       = "DEVCOM.JetBrainsMonoNerdFont"
         Name     = "JetBrainsMono Nerd Font"
-        Desc     = "Nerd Font for Starship icons. Prevents broken glyphs in the prompt."
+        Desc     = "Prevents broken glyphs: the prompt arrow in the old console window, plus icons for Starship/eza."
         Ex       = "Set terminal font to 'JetBrainsMono Nerd Font' after install"
         On       = $true
         Optional = $true
@@ -322,6 +329,16 @@ if ($needsNode) {
         $nodePkg.On = $true
         Write-Host "Node.js LTS auto-added (required for npm packages)" -ForegroundColor Yellow
     }
+}
+
+# The omc plugin is installed by hand after this script (not in the menu), so the rule
+# above cannot see it. Its hooks and MCP server run `node`, so warn - without forcing it
+# back on - when Node was unchecked and is not on this PC already.
+$nodePkgSel = $packages | Where-Object { $_.Name -eq "Node.js LTS" }
+if ($nodePkgSel -and -not $nodePkgSel.On -and -not (Get-Command node -ErrorAction SilentlyContinue)) {
+    Write-Host "Warning: Node.js is not selected and not installed." -ForegroundColor Yellow
+    Write-Host "  The omc (oh-my-claudecode) plugin's hooks, omx and npx-based MCP servers need Node." -ForegroundColor DarkGray
+    Write-Host "  Claude Code itself works without it. To add it later:  winget install OpenJS.NodeJS.LTS" -ForegroundColor DarkGray
 }
 
 # ── Summary ───────────────────────────────────────────────

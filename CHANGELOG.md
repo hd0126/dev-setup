@@ -41,6 +41,15 @@
   소개한다. 이제 macOS·Linux도 Windows처럼 npm 설치를 하지 않고, 설치 끝에 로그인 후 실행할
   플러그인 명령을 안내한다(macOS·Linux는 이 안내 자체가 없었다). 예전에 npm으로 깔린 것은
   지우지 않고, 더 이상 업데이트하지 않는다는 안내만 출력한다.
+- **Windows 메뉴에서 Starship 기본 해제** — Windows 프로필은 순수 PowerShell 프롬프트를 써서
+  Starship을 쓰지 않는데도 기본 설치했다. 켜면 Enter마다 외부 exe를 실행해, 실시간 백신
+  검사가 있는 PC에서 프롬프트 1회 1.6~2.0초가 걸렸다(순수 PS 프롬프트 17~103ms). 메뉴의
+  선택지로는 남긴다. macOS·Linux는 실제로 쓰므로 그대로. 이미 설치된 Starship은 지우지 않는다.
+- **Nerd Font·Node.js 메뉴 설명 정정** — Nerd Font는 Starship용만이 아니다: 예전 콘솔
+  창의 기본 폰트 Consolas에는 프롬프트 화살표 `❯`(U+276F)가 없어 □로 깨진다(Cascadia
+  Mono에는 있음). Node.js는 Claude Code 본체엔 필요 없지만 omc 플러그인의 훅 25개와
+  MCP 서버가 `node`로 실행된다. 이 PR 초안의 "Node는 omx에만 필요" 설명을 바로잡고,
+  Windows에서 Node를 해제했는데 PC에도 없으면 경고를 출력한다(강제로 다시 켜지는 않음).
 - **Windows 네이티브 설치 분기 정리** — 네이티브 도구가 셋으로 늘면서, codex 전용인
   symlink 우회·standalone 정리 재시도를 "Claude Code가 아니면"이 아니라 codex 여부로
   판별하도록 변경(다른 도구 설치 실패 시 Codex 설치 폴더를 지우지 않도록).

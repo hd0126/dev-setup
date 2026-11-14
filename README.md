@@ -60,7 +60,7 @@ irm https://raw.githubusercontent.com/hd0126/dev-setup/main/install.ps1 | iex
 ```
 
 자동으로 처리합니다:
-- PowerShell 7, Starship, zoxide, fzf, ripgrep, Node.js, Git, GitHub CLI, uv 설치 (선택 가능)
+- PowerShell 7, zoxide, fzf, ripgrep, Node.js, Git, GitHub CLI, uv 설치 (선택 가능). Starship은 메뉴에서 기본 해제 — 이 프로필은 더 빠른 순수 PowerShell 프롬프트를 씁니다([이유](#-starship))
 - uv로 최신 Python 설치 (`uv python install --default` — 버전 고정 없음. 이미 Python이 있으면 그대로 둠)
 - JetBrainsMono Nerd Font 설치 + Windows Terminal 폰트 자동 설정 (선택 가능)
 - Claude Code (Anthropic 네이티브 인스톨러, 백그라운드 자동 업데이트), codex (OpenAI 네이티브 인스톨러, Node 불필요), Antigravity CLI `agy` (Google 네이티브 인스톨러, Node 불필요), oh-my-codex(omx) 설치 (선택 가능)
@@ -141,7 +141,7 @@ fzf --version       # Ctrl+R 히스토리 검색
 
 | 기능 | 설명 |
 |------|------|
-| **PowerShell 프롬프트** | 외부 바이너리 없이 순수 PowerShell로 구현(속도 우선). `.git/HEAD`를 직접 읽어 Git 브랜치 표시, 경로 단축, 직전 명령 성공/실패에 따라 ❯ 색상 변경. (Starship은 설치되지만 이 프로필에선 미사용) |
+| **PowerShell 프롬프트** | 외부 바이너리 없이 순수 PowerShell로 구현(속도 우선). `.git/HEAD`를 직접 읽어 Git 브랜치 표시, 경로 단축, 직전 명령 성공/실패에 따라 ❯ 색상 변경. (Starship은 기본 설치하지 않음 — 메뉴에서 선택 가능) |
 | **zoxide** | `z <키워드>`로 방문 기록 기반 스마트 디렉토리 이동 |
 | **fzf** | `Ctrl+R` 히스토리 검색, `Ctrl+T` 파일 검색 |
 | **cc / ccc / ccr** | `cc`=`claude --dangerously-skip-permissions`, `ccc`=`cc --continue`, `ccr`=`cc --resume` (bypass permissions on) |
@@ -356,7 +356,8 @@ Git 브랜치, 언어 버전, 오류 상태 등을 프롬프트에 자동 표시
 
 ![Starship demo](https://raw.githubusercontent.com/starship/starship/main/media/demo.gif)
 
-설치만 됨 (winget). Windows 메인 프로필은 속도를 위해 순수 PowerShell 프롬프트를 씁니다. Starship을 이 프로필에서 쓰려면 `$PROFILE` 끝에 init 한 줄을 추가하세요:
+- **macOS · Linux**: 자동 설치되고 zsh/bash 프롬프트로 바로 사용됩니다.
+- **Windows**: 메뉴에서 **기본 해제**입니다(선택하면 winget으로 설치). Windows 프로필은 속도를 위해 순수 PowerShell 프롬프트를 씁니다. Starship을 이 프로필에서 쓰려면 메뉴에서 선택해 설치한 뒤 `$PROFILE` 끝에 init 한 줄을 추가하세요:
 
 ```powershell
 'Invoke-Expression (&starship init powershell)' | Add-Content $PROFILE
@@ -368,7 +369,7 @@ Git 브랜치, 언어 버전, 오류 상태 등을 프롬프트에 자동 표시
 code ~/.config/starship.toml
 ```
 
-> 참고: Windows에서 Starship은 새 터미널마다 고정비(~수백 ms)가 들어 순수 PowerShell 프롬프트보다 로드가 느립니다. 그래서 이 프로필은 기본적으로 순수 PS 프롬프트를 씁니다.
+> 참고: Windows에서 Starship은 새 터미널마다 init 고정비(~수백 ms)가 들고, **Enter를 칠 때마다** 외부 exe를 실행합니다. 실시간 백신 검사가 있는 PC에서 재보니 프롬프트 1회에 1.6~2.0초가 걸렸습니다(순수 PS 프롬프트는 17~103ms). PC마다 다르지만, 그래서 Windows 기본값은 순수 PS 프롬프트입니다.
 
 ---
 
@@ -419,7 +420,7 @@ Get-Process | ForEach-Object { "$($_.Id) $($_.ProcessName)" } | fzf | ForEach-Ob
 ### 🔤 JetBrainsMono Nerd Font
 Starship 프롬프트·eza의 아이콘(Git 브랜치, 폴더 등)이 □ 로 깨지지 않으려면 Nerd Font가 필요합니다.
 
-- **Windows**: `install.ps1`에서 선택 설치 + Windows Terminal 기본 폰트 자동 설정
+- **Windows**: `install.ps1`에서 기본 설치 + Windows Terminal·예전 콘솔 창 기본 폰트 자동 설정. Starship을 쓰지 않아도 필요합니다 — 예전 콘솔 창(conhost)의 기본 폰트 Consolas에는 프롬프트 화살표 `❯` 글리프가 없어 □로 깨집니다(Windows Terminal 기본 폰트 Cascadia Mono에는 있음).
 - **macOS**: `setup-mac.sh`가 자동 설치. 설치 후 **터미널 앱 설정에서 폰트를 `JetBrainsMono Nerd Font`로 직접 변경**해야 적용됩니다 (Terminal.app / iTerm2 / Ghostty 공통)
 - **Linux**: 수동 설치 — [nerdfonts.com](https://www.nerdfonts.com/font-downloads)에서 JetBrainsMono 다운로드 → `~/.local/share/fonts`에 압축 해제 → `fc-cache -f` 실행 → 터미널 폰트 변경
 
@@ -504,7 +505,12 @@ cc '이 코드 리뷰해줘'
 ---
 
 ### 🟩 Node.js LTS
-JavaScript 런타임. omx 등 npm CLI 설치에 필요 (Claude Code · codex · Antigravity CLI는 네이티브라 불필요).
+JavaScript 런타임. **끄지 마세요.** Claude Code · codex · Antigravity CLI 본체는 네이티브라 Node 없이 실행되지만, 아래는 Node가 있어야 동작합니다.
+- **omc 플러그인**: 훅과 MCP 서버를 모두 `node`로 실행합니다(Node가 없으면 설치돼도 조용히 동작하지 않음)
+- **omx**(`npm install -g`)
+- `npx`로 실행하는 MCP 서버들
+
+Windows 메뉴에서 Node를 해제하고 PC에도 Node가 없으면 경고를 출력합니다.
 
 ```
 node --version
