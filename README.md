@@ -426,7 +426,7 @@ macOS·Linux의 zsh에서 입력을 도와주는 플러그인 3종입니다. Win
 
 | 자동제안 (zsh-autosuggestions) | 오타 색상 (zsh-syntax-highlighting) |
 |---|---|
-| <img src="https://asciinema.org/a/37390.png" alt="zsh-autosuggestions" width="380"> | <img src="https://raw.githubusercontent.com/zsh-users/zsh-syntax-highlighting/master/images/before1-smaller.png" alt="before" height="28"> → <img src="https://raw.githubusercontent.com/zsh-users/zsh-syntax-highlighting/master/images/after1-smaller.png" alt="after" height="28"> |
+| <pre>$ git che<i>ckout main</i></pre><sub>(기울어진 부분이 회색 제안 · 실행 예시)</sub> | <img src="https://raw.githubusercontent.com/zsh-users/zsh-syntax-highlighting/master/images/before1-smaller.png" alt="before" height="28"> → <img src="https://raw.githubusercontent.com/zsh-users/zsh-syntax-highlighting/master/images/after1-smaller.png" alt="after" height="28"> |
 | 기록을 보고 회색으로 제안, `→`로 수락 | 맞는 명령은 초록, 오타는 빨강 |
 
 **↑↓ 부분 검색 (zsh-history-substring-search)** — 입력한 단어가 **들어간** 기록만 위아래로 넘깁니다.
