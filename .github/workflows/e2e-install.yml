@@ -66,16 +66,45 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Bootstrap winget (hosted Windows runners do not ship it)
-        shell: pwsh
+      - name: Make winget available (not registered on hosted Windows runners)
+        # Windows Server 2025 ships App Installer (winget) with the OS, but it is not
+        # registered for the runner user. Step 1 is Microsoft's documented registration
+        # command. Only if that is not enough, step 2 provisions App Installer from the
+        # official microsoft/winget-cli release (bundle + license + x64 dependencies).
+        # (Repair-WinGetPackageManager failed here with 0x80073CF1 "no x64 package".)
+        # Appx/DISM cmdlets are run from Windows PowerShell 5.1 on purpose.
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          Set-PSRepository PSGallery -InstallationPolicy Trusted
-          Install-Module Microsoft.WinGet.Client -Force -Scope CurrentUser
-          Repair-WinGetPackageManager -AllUsers -Force -Latest
           $apps = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps'
           $env:Path = "$apps;$env:Path"
-          Add-Content -Path $env:GITHUB_PATH -Value $apps
+          function Test-Winget { try { return ((& winget --version 2>$null) -match '^v\d') } catch { return $false } }
+
+          try { Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction Stop }
+          catch { Write-Host "register by family name: $($_.Exception.Message)" }
+
+          if (-not (Test-Winget)) {
+            Write-Host "winget not usable yet - provisioning App Installer from the official release"
+            $d = Join-Path $env:RUNNER_TEMP 'winget'
+            New-Item -ItemType Directory -Force -Path $d | Out-Null
+            gh release download --repo microsoft/winget-cli --dir $d `
+              --pattern 'Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle' `
+              --pattern '*_License1.xml' --pattern 'DesktopAppInstaller_Dependencies.zip'
+            if ($LASTEXITCODE -ne 0) { throw "gh release download failed ($LASTEXITCODE)" }
+            Expand-Archive (Join-Path $d 'DesktopAppInstaller_Dependencies.zip') (Join-Path $d 'deps') -Force
+            $deps = @(Get-ChildItem (Join-Path $d 'deps') -Recurse -Include *.appx, *.msix |
+                      Where-Object { $_.FullName -match '\\x64\\' } | ForEach-Object FullName)
+            Write-Host "dependencies: $($deps -join ', ')"
+            $lic = (Get-ChildItem $d -Filter '*_License1.xml' | Select-Object -First 1).FullName
+            Add-AppxProvisionedPackage -Online -PackagePath (Join-Path $d 'Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle') `
+              -DependencyPackagePath $deps -LicensePath $lic | Out-Null
+            Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
+          }
+
+          if (-not (Test-Winget)) { Write-Host "::error::winget is still not usable"; exit 1 }
           winget --version
+          Add-Content -Path $env:GITHUB_PATH -Value $apps
 
       - name: Run install.ps1 (unattended)
         shell: pwsh
