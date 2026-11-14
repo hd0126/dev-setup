@@ -1100,7 +1100,7 @@ if ($npmNativeFail) {
     Write-Host "This needs the C++ build tools. Fix it with:" -ForegroundColor DarkGray
     Write-Host '  winget install Microsoft.VisualStudio.2022.BuildTools --silent --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"' -ForegroundColor DarkGray
     Write-Host "  # then open a NEW terminal and re-run the failed npm install, e.g.:" -ForegroundColor DarkGray
-    Write-Host "  npm install -g oh-my-claude-sisyphus" -ForegroundColor DarkGray
+    Write-Host "  npm install -g oh-my-codex" -ForegroundColor DarkGray
     Write-Host "If you are behind a corporate proxy/firewall, prebuilt binaries may be blocked;" -ForegroundColor DarkGray
     Write-Host "configure npm proxy (npm config set proxy ...) or try another network." -ForegroundColor DarkGray
 }

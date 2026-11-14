@@ -40,7 +40,7 @@ AI 코딩 CLI(Claude Code·Codex·Antigravity)와 모던 터미널 도구를 한
   - [🔵 Codex CLI](#-codex-cli)
   - [💎 Antigravity CLI](#-antigravity-cli-agy)
   - [🔗 oh-my-codex](#-oh-my-codex-omx)
-  - [🧩 oh-my-claude-sisyphus](#-oh-my-claude-sisyphus-omc)
+  - [🧩 oh-my-claudecode](#-oh-my-claudecode-omc)
 - [Claude Code 플러그인](#claude-code-플러그인-로그인-후-수동-실행)
 - [단축키 / 명령어](#단축키--명령어)
 - [프로필 캐시 관리](#프로필-캐시-관리)
@@ -96,8 +96,8 @@ curl -fsSL https://raw.githubusercontent.com/hd0126/dev-setup/main/install.sh | 
 - apt로 curl, git, ripgrep, fzf, python3, unzip 설치; gh는 GitHub 공식 apt 저장소를 추가해 설치 (시스템 기본 버전 유지)
 - NodeSource 저장소로 Node.js LTS 설치 (npm 전역 prefix를 `~/.npm-global`로 설정 → sudo 없이 `npm install -g`)
 - curl로 Starship, zoxide, uv 설치 → uv로 최신 Python 설치 (`~/.local/bin`의 `python`/`python3`, 시스템 python3는 그대로)
-- [쾌적함 플러스 도구](#-쾌적함-플러스-도구): zsh-autosuggestions · zsh-syntax-highlighting · eza · bat · fd · git-delta · tealdeer (apt에 없는 배포판은 자동 skip)
-- claude·codex·agy(Antigravity CLI)는 공식 네이티브 인스톨러로, omc·omx는 npm으로 설치
+- [쾌적함 플러스 도구](#-쾌적함-플러스-도구): zsh-autosuggestions · zsh-syntax-highlighting · eza · bat · fd · git-delta · tealdeer (apt에 없는 배포판은 자동 skip), zsh-history-substring-search (apt에 없어 공식 저장소를 `~/.zsh`로 git clone)
+- claude·codex·agy(Antigravity CLI)는 공식 네이티브 인스톨러로, omx는 npm으로 설치. omc는 Claude Code 플러그인으로 — 설치 끝에 안내되는 명령을 로그인 후 실행
 - `.bashrc` / `.zshrc`에 `cc`, `ccc`, `ccr`, zoxide, fzf, starship 설정 추가
 
 **macOS** 에서 자동으로 처리합니다:
@@ -105,7 +105,7 @@ curl -fsSL https://raw.githubusercontent.com/hd0126/dev-setup/main/install.sh | 
 - brew로 git, gh, ripgrep, fzf, zoxide, starship, uv, node 설치 → uv로 최신 Python 설치 (`~/.local/bin`의 `python`/`python3`)
 - [쾌적함 플러스 도구](#-쾌적함-플러스-도구): zsh-autosuggestions · zsh-syntax-highlighting · zsh-history-substring-search · eza · bat · fd · git-delta · tealdeer
 - JetBrainsMono Nerd Font 설치 (아이콘 깨짐 방지 — 터미널 앱 폰트는 직접 변경 필요)
-- claude·codex·agy(Antigravity CLI)는 공식 네이티브 인스톨러로, omc·omx는 npm으로 설치
+- claude·codex·agy(Antigravity CLI)는 공식 네이티브 인스톨러로, omx는 npm으로 설치. omc는 Claude Code 플러그인으로 — 설치 끝에 안내되는 명령을 로그인 후 실행
 - `.zshrc`에 `cc`, `ccc`, `ccr`, zoxide, fzf, starship 설정 추가
 - SSH는 macOS 키체인이 자동 관리 (별도 설정 불필요)
 
@@ -628,20 +628,21 @@ $team 3:executor "병렬로 실행해줘"       # 병렬 멀티에이전트 실�
 
 ---
 
-### 🧩 oh-my-claude-sisyphus (`omc`)
+### 🧩 oh-my-claudecode (`omc`)
 [GitHub](https://github.com/Yeachan-Heo/oh-my-claudecode) · [문서](https://yeachan-heo.github.io/oh-my-claudecode-website)
 
 Claude Code용 멀티에이전트 오케스트레이션 레이어. planner·executor·reviewer 등 전문 에이전트를 자동 라우팅하고 HUD로 실시간 토큰·세션 상태 표시. _"Don't learn Claude Code. Just use OMC."_
 
-> **Windows 참고**: Windows에서는 npm 패키지 대신 **Claude Code 플러그인**으로 설치됩니다(아래 [플러그인 섹션](#claude-code-플러그인-로그인-후-수동-실행) 참고 — npm 버전은 C++ 빌드툴이 필요한 네이티브 모듈을 끌어옴). 이 경우 `omc` 셸 명령 대신 Claude Code 세션 안의 스킬(`/autopilot` 등)로 사용합니다.
+> **설치 방식**: 공식 README가 권장하는 대로 세 OS 모두 **Claude Code 플러그인**으로 설치합니다. Claude Code 로그인이 필요해서 스크립트가 자동 실행하지 않고, 설치 끝에 명령을 안내합니다(아래 [플러그인 섹션](#claude-code-플러그인-로그인-후-수동-실행) 참고). Claude Code 세션 안의 스킬(`/autopilot` 등)로 사용합니다.
+>
+> 터미널에서 `omc` 셸 명령도 쓰고 싶다면 npm판(`npm i -g oh-my-claude-sisyphus@latest`)을 따로 설치할 수 있습니다(공식 문서의 대안 경로). Windows에서는 C++ 빌드툴이 필요한 네이티브 모듈을 끌어와 실패할 수 있습니다. 예전 스크립트가 macOS/Linux에 깔아둔 npm판은 지우지 않지만, 이제 스크립트가 업데이트하지는 않습니다.
 
 ```bash
-omc setup                     # 초기 설정 (HUD·훅 자동 구성)
-
-# Claude Code 세션 내 주요 스킬
+# Claude Code 세션 내
+/omc-setup                      # 초기 설정 (HUD·훅 자동 구성)
 /autopilot "REST API 만들어줘"  # 자율 실행 모드 (계획→구현→검증)
 /ralph "승인된 계획 완료까지"    # 반복 완료 루프
-/ccg "이 PR 리뷰해줘"           # Codex + Gemini 병렬 자문
+/ccg "이 PR 리뷰해줘"           # Codex + Antigravity(또는 Gemini) 병렬 자문
 /team                           # 멀티에이전트 팀 오케스트레이션
 ```
 

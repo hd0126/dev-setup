@@ -36,11 +36,22 @@
     스텁)보다 앞에 둔다.
 - **Linux에서 `python3-pip` 설치 제거** — 최근 Ubuntu/Debian은 시스템 `pip install`을
   PEP 668로 막아 초보가 첫 명령부터 에러를 본다. 패키지 설치는 uv로 통일(README 안내 갱신).
+- **macOS·Linux의 omc(oh-my-claudecode)를 npm 대신 Claude Code 플러그인으로** — 공식
+  README는 모든 OS에서 플러그인 설치를 권장하고 npm(`oh-my-claude-sisyphus`)은 대안으로만
+  소개한다. 이제 macOS·Linux도 Windows처럼 npm 설치를 하지 않고, 설치 끝에 로그인 후 실행할
+  플러그인 명령을 안내한다(macOS·Linux는 이 안내 자체가 없었다). 예전에 npm으로 깔린 것은
+  지우지 않고, 더 이상 업데이트하지 않는다는 안내만 출력한다.
 - **Windows 네이티브 설치 분기 정리** — 네이티브 도구가 셋으로 늘면서, codex 전용인
   symlink 우회·standalone 정리 재시도를 "Claude Code가 아니면"이 아니라 codex 여부로
   판별하도록 변경(다른 도구 설치 실패 시 Codex 설치 폴더를 지우지 않도록).
 
 ### Fixed
+- **Linux에서 zsh-history-substring-search가 한 번도 동작하지 않던 문제** — Ubuntu·Debian
+  어느 버전에도 이 apt 패키지가 없어(packages.ubuntu.com·packages.debian.org 검색 결과 없음)
+  설치가 "저장소에 없음"으로 조용히 건너뛰어졌고, `.zshrc` 블록은 존재하지 않는 `/usr/share`
+  경로만 봤다. 공식 저장소를 `~/.zsh`로 `git clone`하고(임시 폴더에 받은 뒤 옮겨 반쯤 받은
+  폴더가 남지 않게 함), 블록이 `~/.zsh` 경로를 먼저 보도록 바꿨다. 예전 버전이 넣은 블록은
+  그 한 줄만 제자리에서 고친다(멱등).
 - **Windows 설치 중 PowerShell 프로필이 통째로 한 번 로드되던 문제** — 실행 정책을
   `RemoteSigned`로 바꾸는 자식 `pwsh`가 `-NoProfile` 없이 실행돼, 설정 한 줄 바꾸는 데
   사용자 프로필(zoxide·PSReadLine 등)을 전부 로드했다. 실제 설치에서 약 8초가 걸렸고

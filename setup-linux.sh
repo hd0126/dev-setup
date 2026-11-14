@@ -53,7 +53,30 @@ install_apt_opt() {
 # 쾌적함 플러스 (전부 시작속도 영향 미미 또는 0)
 install_apt_opt zsh-autosuggestions     # 히스토리 기반 회색 자동제안 (zsh)
 install_apt_opt zsh-syntax-highlighting # 입력 중 명령 유효/오타 색상 (zsh)
-install_apt_opt zsh-history-substring-search # ↑↓ 부분일치 히스토리 검색 (zsh)
+
+# zsh-history-substring-search (↑↓ 부분일치 히스토리 검색): Ubuntu·Debian 어느 버전에도
+# apt 패키지가 없다(packages.ubuntu.com / packages.debian.org 검색 결과 없음). 예전엔
+# install_apt_opt 가 "저장소에 없음"으로 조용히 건너뛰어 Linux 에선 한 번도 동작하지 않았다.
+# 공식 README 의 git clone 방식으로 ~/.zsh 에 받는다. 임시 폴더에 받은 뒤 옮겨서, 실패해도
+# 반쯤 받은 폴더가 남아 다음 실행을 막지 않게 한다.
+HSS_DIR="$HOME/.zsh/zsh-history-substring-search"
+if [ -f "$HSS_DIR/zsh-history-substring-search.zsh" ]; then
+    ok "zsh-history-substring-search (already installed: ~/.zsh)"
+elif [ -e "$HSS_DIR" ]; then
+    warn "zsh-history-substring-search — $HSS_DIR 가 있지만 파일이 없음, 건너뜀 (지우고 재실행하면 다시 받음)"
+elif command -v git &>/dev/null; then
+    info "Installing zsh-history-substring-search (git clone)..."
+    _hss_tmp="$(mktemp -d)"
+    if git clone -q --depth 1 https://github.com/zsh-users/zsh-history-substring-search "$_hss_tmp/hss" \
+        && mkdir -p "$HOME/.zsh" && mv "$_hss_tmp/hss" "$HSS_DIR"; then
+        ok "zsh-history-substring-search → ~/.zsh"
+    else
+        warn "zsh-history-substring-search 다운로드 실패 — 네트워크 확인 후 재실행하면 다시 시도합니다"
+    fi
+    rm -rf "$_hss_tmp"
+else
+    warn "git not found — skipping zsh-history-substring-search"
+fi
 install_apt_opt eza                     # ls 대체 (Ubuntu 24.04+)
 install_apt_opt bat                     # cat 대체 — Ubuntu에선 batcat 명령
 install_apt_opt fd-find                 # find 대체 — Ubuntu에선 fdfind 명령
@@ -199,7 +222,10 @@ install_npm() {
 
 # Claude Code, codex and Antigravity CLI ship official native installers
 # (standalone binaries with background auto-update) — the vendor-recommended
-# path. Install those natively, independent of npm; omc / omx stay on npm.
+# path. Install those natively, independent of npm; omx stays on npm.
+# omc (oh-my-claudecode) is a Claude Code PLUGIN, not an npm install: its README
+# recommends the plugin on every OS. The commands are printed after install
+# (they need a logged-in Claude Code), same as on Windows.
 # All three drop binaries in ~/.local/bin, already on PATH (see uv above).
 # Antigravity CLI (agy) replaces @google/gemini-cli: Google stopped serving
 # Gemini CLI for free/Pro/Ultra accounts on 2026-06-18 (paid API keys only).
@@ -267,10 +293,15 @@ install_native "codex (OpenAI)" "https://chatgpt.com/codex/install.sh" sh   code
 install_native "Antigravity CLI (Google)" "https://antigravity.google/cli/install.sh" bash agy
 
 if command -v npm &>/dev/null; then
-    install_npm "oh-my-claude-sisyphus"
     install_npm "oh-my-codex"
+    # 예전 버전이 npm 으로 깐 omc(oh-my-claude-sisyphus)는 지우지 않는다 — 공식 문서가
+    # 여전히 대안으로 소개하는 정상 설치다. 다만 이제 스크립트가 업데이트하지 않으므로 알려준다.
+    if npm ls -g --depth=0 oh-my-claude-sisyphus &>/dev/null; then
+        info "npm판 omc(oh-my-claude-sisyphus)가 있습니다 — 이제 이 스크립트는 업데이트하지 않습니다."
+        info "  권장: 아래 안내대로 Claude Code 플러그인으로 설치. npm판을 계속 쓰려면: npm i -g oh-my-claude-sisyphus@latest"
+    fi
 else
-    warn "npm not found — skipping omc/omx. Install Node.js first, then re-run."
+    warn "npm not found — skipping omx. Install Node.js first, then re-run."
 fi
 
 remove_old_gemini
@@ -453,7 +484,9 @@ EOF
         # history-substring-search는 syntax-highlighting보다도 뒤여야 함 (플러그인 공식 권장 순서)
         IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── zsh-history-substring-search (↑↓ 부분일치 검색 — 반드시 syntax-highlighting 뒤) ──
-if [ -f /usr/share/zsh-history-substring-search/zsh-history-substring-search.zsh ]; then
+if [ -f "$HOME/.zsh/zsh-history-substring-search/zsh-history-substring-search.zsh" ]; then
+    source "$HOME/.zsh/zsh-history-substring-search/zsh-history-substring-search.zsh"
+elif [ -f /usr/share/zsh-history-substring-search/zsh-history-substring-search.zsh ]; then
     source /usr/share/zsh-history-substring-search/zsh-history-substring-search.zsh
 fi
 if type history-substring-search-up &>/dev/null; then
@@ -461,6 +494,25 @@ if type history-substring-search-up &>/dev/null; then
     bindkey '^[[B' history-substring-search-down
 fi
 EOF
+        # 예전 버전이 넣은 블록은 존재하지 않는 /usr/share 경로만 봐서 아무것도 로드하지 않는다.
+        # 그 블록이 있으면(시그니처가 맞아 새 블록은 추가되지 않으므로) 그 줄만 제자리에서
+        # 고쳐 ~/.zsh 경로를 먼저 보게 한다. 우리 스크립트가 쓴 정확한 줄만 바꾸고, 이미
+        # 고쳐졌으면 건드리지 않는다(멱등).
+        _hss_old='if [ -f /usr/share/zsh-history-substring-search/zsh-history-substring-search.zsh ]; then'
+        if grep -qxF "$_hss_old" "$cfg" 2>/dev/null && ! grep -qF '.zsh/zsh-history-substring-search/' "$cfg" 2>/dev/null; then
+            _hss_tmpf="$(mktemp)"
+            awk -v old="$_hss_old" '
+                $0 == old && !done {
+                    print "if [ -f \"$HOME/.zsh/zsh-history-substring-search/zsh-history-substring-search.zsh\" ]; then"
+                    print "    source \"$HOME/.zsh/zsh-history-substring-search/zsh-history-substring-search.zsh\""
+                    print "elif [ -f /usr/share/zsh-history-substring-search/zsh-history-substring-search.zsh ]; then"
+                    done = 1; next
+                }
+                { print }
+            ' "$cfg" > "$_hss_tmpf" && cat "$_hss_tmpf" > "$cfg"
+            rm -f "$_hss_tmpf"
+            ok "zsh-history-substring-search 블록 갱신 → $cfg (~/.zsh 경로 추가)"
+        fi
         append_cfg "$cfg" 'history-substring-search' "zsh-history-substring-search" "$BLOCK" tail
         if [ "$hand_configured" = 0 ]; then
             IFS= read -r -d '' BLOCK <<'EOF' || true
@@ -609,6 +661,20 @@ for cfg in "${SHELL_CONFIGS[@]}"; do
         ok "SSH agent config → $cfg"
     fi
 done
+
+# ── Claude Code plugins (manual, after login) ─────────────
+# omc 를 포함한 플러그인은 로그인된 Claude Code 가 필요해 자동 실행하지 않는다 (Windows 와 동일).
+echo ""
+echo -e "${YELLOW}-- Claude Code plugins (run after login) --${NC}"
+echo "  claude auth login"
+echo "  claude plugin marketplace add Yeachan-Heo/oh-my-claudecode"
+echo "  claude plugin install oh-my-claudecode@omc"
+echo "  claude plugin marketplace add openai/codex-plugin-cc"
+echo "  claude plugin install codex@openai-codex"
+echo "  claude plugin marketplace add https://github.com/orientpine/honeypot.git"
+echo "  claude plugin marketplace add forrestchang/andrej-karpathy-skills"
+echo "  claude plugin install andrej-karpathy-skills@karpathy-skills"
+echo -e "${YELLOW}-------------------------------------------${NC}"
 
 # ── Report a problem (terminal-friendly) ─────────────────
 # 1) Pre-filled GitHub issue URL (OS + failed items already filled in).

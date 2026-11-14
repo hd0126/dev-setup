@@ -171,7 +171,10 @@ install_npm() {
 
 # Claude Code, codex and Antigravity CLI ship official native installers
 # (standalone binaries with background auto-update) — the vendor-recommended
-# path. Install those natively, independent of npm; omc / omx stay on npm.
+# path. Install those natively, independent of npm; omx stays on npm.
+# omc (oh-my-claudecode) is a Claude Code PLUGIN, not an npm install: its README
+# recommends the plugin on every OS. The commands are printed after install
+# (they need a logged-in Claude Code), same as on Windows.
 # Antigravity CLI (agy) replaces @google/gemini-cli: Google stopped serving
 # Gemini CLI for free/Pro/Ultra accounts on 2026-06-18 (paid API keys only).
 
@@ -238,10 +241,15 @@ install_native "codex (OpenAI)" "https://chatgpt.com/codex/install.sh" sh   code
 install_native "Antigravity CLI (Google)" "https://antigravity.google/cli/install.sh" bash agy
 
 if command -v npm &>/dev/null; then
-    install_npm "oh-my-claude-sisyphus"
     install_npm "oh-my-codex"
+    # 예전 버전이 npm 으로 깐 omc(oh-my-claude-sisyphus)는 지우지 않는다 — 공식 문서가
+    # 여전히 대안으로 소개하는 정상 설치다. 다만 이제 스크립트가 업데이트하지 않으므로 알려준다.
+    if npm ls -g --depth=0 oh-my-claude-sisyphus &>/dev/null; then
+        info "npm판 omc(oh-my-claude-sisyphus)가 있습니다 — 이제 이 스크립트는 업데이트하지 않습니다."
+        info "  권장: 아래 안내대로 Claude Code 플러그인으로 설치. npm판을 계속 쓰려면: npm i -g oh-my-claude-sisyphus@latest"
+    fi
 else
-    warn "npm not found — skipping omc/omx. Install Node.js first, then re-run."
+    warn "npm not found — skipping omx. Install Node.js first, then re-run."
 fi
 
 remove_old_gemini
@@ -471,6 +479,20 @@ fi
 # ── 7. SSH agent ──────────────────────────────────────────
 # macOS는 launchd + 키체인이 자동 관리 → 별도 설정 불필요
 ok "SSH agent — macOS keychain handles this automatically"
+
+# ── Claude Code plugins (manual, after login) ─────────────
+# omc 를 포함한 플러그인은 로그인된 Claude Code 가 필요해 자동 실행하지 않는다 (Windows 와 동일).
+echo ""
+echo -e "${YELLOW}-- Claude Code plugins (run after login) --${NC}"
+echo "  claude auth login"
+echo "  claude plugin marketplace add Yeachan-Heo/oh-my-claudecode"
+echo "  claude plugin install oh-my-claudecode@omc"
+echo "  claude plugin marketplace add openai/codex-plugin-cc"
+echo "  claude plugin install codex@openai-codex"
+echo "  claude plugin marketplace add https://github.com/orientpine/honeypot.git"
+echo "  claude plugin marketplace add forrestchang/andrej-karpathy-skills"
+echo "  claude plugin install andrej-karpathy-skills@karpathy-skills"
+echo -e "${YELLOW}-------------------------------------------${NC}"
 
 # ── Report a problem (terminal-friendly) ─────────────────
 # 1) Pre-filled GitHub issue URL (OS + failed items already filled in).
