@@ -1,0 +1,205 @@
+name: E2E install
+
+# Runs the REAL installers end to end on throwaway GitHub-hosted runners, then checks
+# that the tools a beginner needs are actually there. ci.yml only parses/lints and
+# dry-runs; this is the job that would catch a vendor installer changing URL, asking a
+# question, or hanging. Triggered only when an installer changes (it is slow).
+
+on:
+  pull_request:
+    paths:
+      - install.ps1
+      - install.sh
+      - setup-linux.sh
+      - setup-mac.sh
+      - Microsoft.PowerShell_profile.ps1
+      - .github/workflows/e2e-install.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unix:
+    name: Real install (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run install.sh from the checkout
+        # stdin from /dev/null and no tty: every y/N prompt must fall back to "no"
+        # instead of waiting (a hang here fails the job via timeout-minutes).
+        run: bash install.sh < /dev/null
+
+      - name: Verify the tools a new terminal would find
+        run: |
+          export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
+          fail=0
+          for c in claude codex agy uv zoxide starship fzf rg gh git node npm omx; do
+            if command -v "$c" >/dev/null 2>&1; then
+              printf 'OK       %-9s %s\n' "$c" "$("$c" --version 2>&1 | head -1)"
+            else
+              echo "MISSING  $c"; fail=1
+            fi
+          done
+          # Comfort extras: skipped by design on distros that lack the package.
+          for c in eza bat batcat fd fdfind delta tldr; do
+            if command -v "$c" >/dev/null 2>&1; then echo "ok (extra) $c"; else echo "-- (extra) $c not present"; fi
+          done
+          echo "--- uv-managed Python"; uv python list --only-installed
+          if [ "$RUNNER_OS" = Linux ]; then
+            f="$HOME/.zsh/zsh-history-substring-search/zsh-history-substring-search.zsh"
+            if [ -f "$f" ]; then echo "OK       history-substring-search clone"; else echo "MISSING  $f"; fail=1; fi
+          fi
+          if command -v gemini >/dev/null 2>&1; then echo "UNEXPECTED gemini is installed"; fail=1; fi
+          exit $fail
+
+  windows:
+    # Both shells a beginner might paste the one-liner into: Windows PowerShell 5.1
+    # (the default "PowerShell" window) and PowerShell 7. Under pwsh the script must not
+    # upgrade the very pwsh that runs it (that kills the run); under 5.1 it may.
+    name: Real install (windows-latest, ${{ matrix.shell }})
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [powershell, pwsh]
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make winget available (not registered on hosted Windows runners)
+        # Windows Server 2025 ships App Installer (winget) with the OS, but it is not
+        # registered for the runner user. Step 1 is Microsoft's documented registration
+        # command. Only if that is not enough, step 2 provisions App Installer from the
+        # official microsoft/winget-cli release (bundle + license + x64 dependencies).
+        # (Repair-WinGetPackageManager failed here with 0x80073CF1 "no x64 package".)
+        # Appx/DISM cmdlets are run from Windows PowerShell 5.1 on purpose.
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $apps = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps'
+          $env:Path = "$apps;$env:Path"
+          function Test-Winget { try { return ((& winget --version 2>$null) -match '^v\d') } catch { return $false } }
+
+          try { Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction Stop }
+          catch { Write-Host "register by family name: $($_.Exception.Message)" }
+
+          if (-not (Test-Winget)) {
+            Write-Host "winget not usable yet - provisioning App Installer from the official release"
+            $d = Join-Path $env:RUNNER_TEMP 'winget'
+            New-Item -ItemType Directory -Force -Path $d | Out-Null
+            gh release download --repo microsoft/winget-cli --dir $d `
+              --pattern 'Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle' `
+              --pattern '*_License1.xml' --pattern 'DesktopAppInstaller_Dependencies.zip'
+            if ($LASTEXITCODE -ne 0) { throw "gh release download failed ($LASTEXITCODE)" }
+            Expand-Archive (Join-Path $d 'DesktopAppInstaller_Dependencies.zip') (Join-Path $d 'deps') -Force
+            $deps = @(Get-ChildItem (Join-Path $d 'deps') -Recurse -Include *.appx, *.msix |
+                      Where-Object { $_.FullName -match '\\x64\\' } | ForEach-Object FullName)
+            Write-Host "dependencies: $($deps -join ', ')"
+            $lic = (Get-ChildItem $d -Filter '*_License1.xml' | Select-Object -First 1).FullName
+            Add-AppxProvisionedPackage -Online -PackagePath (Join-Path $d 'Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle') `
+              -DependencyPackagePath $deps -LicensePath $lic | Out-Null
+            Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe
+          }
+
+          if (-not (Test-Winget)) { Write-Host "::error::winget is still not usable"; exit 1 }
+          winget --version
+          Add-Content -Path $env:GITHUB_PATH -Value $apps
+
+      # The step's own host must be the shell under test: in the 5.1 run the script may
+      # upgrade pwsh, which would close a pwsh step host along with it. `shell:` does not
+      # accept expressions, hence one step per shell.
+      #
+      # 5.1 runs the script the way the README tells beginners to: `irm ... | iex`, i.e. the
+      # text is decoded as UTF-8 and handed to Invoke-Expression. (`-File` under 5.1 decodes
+      # with the system code page; the runner is English/CP1252, where this BOM-less file
+      # cannot parse - see the header of install.ps1. ci.yml checks the Korean CP949 case.)
+      #
+      # It runs in a SEPARATE powershell.exe, not in the step host: GitHub's `powershell`
+      # step wrapper sets $ErrorActionPreference = 'Stop', which turns any native stderr
+      # line (e.g. `tldr --list` on an empty cache) into a terminating error. A user's
+      # console uses 'Continue'. Inside Invoke-Expression the script has no path, exactly
+      # like a real `irm | iex`: it returns instead of exiting and installs main's
+      # profile. So the wrapper turns the script's own $failedPkgs into the exit code.
+      - name: Run install.ps1 like the README one-liner (Windows PowerShell 5.1, irm | iex)
+        if: matrix.shell == 'powershell'
+        shell: powershell
+        env:
+          DEVSETUP_NONINTERACTIVE: "1"
+        run: |
+          $wrapper = Join-Path $env:RUNNER_TEMP 'e2e-oneliner.ps1'
+          $src = (Join-Path $PWD 'install.ps1') -replace "'", "''"
+          Set-Content -Path $wrapper -Encoding ASCII -Value @(
+            "Invoke-Expression ([IO.File]::ReadAllText('$src', [Text.Encoding]::UTF8))"
+            'if ($failedPkgs.Count -gt 0) { Write-Host ("FAILED: " + ($failedPkgs -join "; ")); exit 1 }'
+          )
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File $wrapper
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { Write-Host "::error::install.ps1 exited $code"; exit 1 }
+
+      - name: Run install.ps1 (unattended, PowerShell 7)
+        if: matrix.shell == 'pwsh'
+        shell: pwsh
+        env:
+          DEVSETUP_NONINTERACTIVE: "1"
+        run: |
+          pwsh -NoProfile -File ./install.ps1
+          $code = $LASTEXITCODE
+          if ($code -ne 0) { Write-Host "::error::install.ps1 exited $code"; exit 1 }
+
+      - name: Verify the tools a new terminal would find
+        # -NoProfile for the step host itself: otherwise it loads the freshly installed
+        # profile with the runner's OLD PATH and writes a "no tools" cache before the
+        # checks below even start (a new user terminal gets the updated PATH instead).
+        shell: pwsh -NoProfile -command ". '{0}'"
+        run: |
+          # Exactly the PATH a newly opened terminal gets: machine + user, from the registry.
+          $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+          $fail = 0
+          foreach ($c in 'claude','codex','agy','git','gh','node','uv','zoxide','fzf','rg','pwsh','omx') {
+            $cmd = Get-Command $c -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($cmd) {
+              $ver = (& $cmd.Source --version 2>&1 | Select-Object -First 1)
+              Write-Host ("OK       {0,-7} {1}  ({2})" -f $c, $ver, $cmd.Source)
+            } else { Write-Host "MISSING  $c"; $fail++ }
+          }
+          foreach ($c in 'eza','bat','fd','delta','tldr') {
+            if (Get-Command $c -ErrorAction SilentlyContinue) { Write-Host "ok (extra) $c" } else { Write-Host "MISSING  (extra) $c"; $fail++ }
+          }
+          if (Get-Command gemini -ErrorAction SilentlyContinue) { Write-Host "UNEXPECTED gemini is installed"; $fail++ }
+          $prof = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'PowerShell\Microsoft.PowerShell_profile.ps1'
+          if (Test-Path $prof) { Write-Host "OK       profile at $prof" } else { Write-Host "MISSING  profile"; $fail++ }
+          # The installed profile must load in a new pwsh and see the installed tools.
+          $probe = 'Write-Host ("PROFILE-FLAGS zoxide={0} fzf={1} eza={2} fd={3} z={4} ll={5}" -f $hasZoxide, $hasFzf, $hasEza, $hasFd, [bool](Get-Command z -ErrorAction Ignore), [bool](Get-Command ll -ErrorAction Ignore))'
+          $out = pwsh -NoLogo -Command $probe 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch 'PowerShell loaded') { Write-Host "PROFILE did not finish loading"; $fail++ }
+          if ($out -notmatch 'PROFILE-FLAGS zoxide=True fzf=True') { Write-Host "PROFILE does not see zoxide/fzf"; $fail++ }
+
+          # Single-file cache: only this branch's profile has it. The pwsh run executes
+          # install.ps1 as a file from the checkout and installs the local profile; the
+          # 5.1 one-liner run (no script path) installs main's, like a real `irm | iex`.
+          $repoProf = Join-Path $env:GITHUB_WORKSPACE 'Microsoft.PowerShell_profile.ps1'
+          $sameAsBranch = ((Get-FileHash $prof).Hash -eq (Get-FileHash $repoProf).Hash)
+          if (-not $sameAsBranch) {
+            Write-Host "--       profile is main's (one-liner path) - branch cache format not checked"
+          } else {
+            if ($out -notmatch 'eza=True fd=True z=True ll=True') { Write-Host "PROFILE flags incomplete for this branch"; $fail++ }
+            $cache = [IO.Path]::GetFullPath("$env:TEMP\pwsh_profile_cache.ps1")
+            if (Test-Path $cache) {
+              $head = "$(Get-Content $cache -TotalCount 1)"
+              Write-Host ("OK       profile cache, {0} tool stamp(s)" -f (($head -split "`t").Count - 2))
+            } else {
+              Write-Host "MISSING  profile cache at $cache"
+              pwsh -NoLogo -Command 'if ($global:DevSetupProfileCacheError) { "cache error: " + $global:DevSetupProfileCacheError.Exception.Message } else { "no cache error recorded" }'
+              $fail++
+            }
+          }
+          exit $fail

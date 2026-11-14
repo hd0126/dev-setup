@@ -1,11 +1,17 @@
 # Windows setup script (winget + npm)
 # Run (admin NOT required - installs are user-scope; only retry as Administrator
 # if a system-wide install fails with access denied):
-#   powershell -ExecutionPolicy Bypass -File install.ps1
 #   pwsh      -ExecutionPolicy Bypass -File install.ps1
+#   powershell -ExecutionPolicy Bypass -File install.ps1   (Korean system locale only - see below)
 #
-# One-liner (safe even on a fresh PC with default Restricted policy):
+# One-liner (safe even on a fresh PC with default Restricted policy; works in any locale):
 #   irm https://raw.githubusercontent.com/hd0126/dev-setup/main/install.ps1 | iex
+#
+# Encoding: this file is UTF-8 WITHOUT a BOM, because a BOM breaks `irm | iex`.
+# `irm | iex` and pwsh 7 read it as UTF-8. Windows PowerShell 5.1 with `-File` reads it
+# in the system ANSI code page instead: on Korean Windows (CP949) it parses fine (CI
+# checks this), but on e.g. English Windows (CP1252) the Korean messages decode into
+# curly quotes and the file does not parse. There, use the one-liner or pwsh.
 
 # 파일 실행이면 경로, irm | iex면 빈 값. irm | iex에서 `exit`는 사용자의
 # 터미널 세션을 통째로 닫아버리므로, 중단할 때 이 값으로 exit/return을 고른다.
@@ -22,7 +28,7 @@ try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAc
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
 
 # 한글/공백 계정명이면 $env:TEMP 가 8.3 짧은 이름(C:\Users\곽대운~1\...)이 되는데,
-# Remove-Item 은 이 경로의 "존재하는" 항목을 지우지 못하고 -ErrorAction 도 무시한 채
+# Remove-Item 은 이 경로의 "존재하는" 항목을 지우지 못하고, -ErrorAction 도 무시한 채 (아래 에러)
 # "지정한 경로 ...~1에 개체가 없습니다" 를 낸다(-LiteralPath 도 동일, PS 5.1·7 공통).
 # Get-Item 으로 긴 경로를 얻은 뒤 지운다. 없는 경로는 조용히 건너뛴다.
 function Remove-TempPath {
@@ -31,6 +37,116 @@ function Remove-TempPath {
         try { $full = (Get-Item -LiteralPath $p -Force -ErrorAction Stop).FullName } catch { continue }
         Remove-Item -LiteralPath $full -Recurse:$Recurse -Force -ErrorAction SilentlyContinue
     }
+}
+
+# 사용자 PATH 원문을 레지스트리에서 직접 읽고 쓴다.
+# [Environment]::GetEnvironmentVariable 은 %JAVA_HOME%\bin 같은 항목을 확장해서 돌려준다.
+# 그 값을 그대로 다시 쓰면 그 항목들이 오늘의 값으로 굳는다 (REG_EXPAND_SZ -> REG_SZ).
+# Windows 기본 항목 %USERPROFILE%\AppData\Local\Microsoft\WindowsApps 도 같은 피해를 본다.
+# 그래서 확장하지 않은 원문과 값 종류를 그대로 보존한다.
+function Get-UserPathRaw {
+    $raw  = ''
+    $kind = [Microsoft.Win32.RegistryValueKind]::ExpandString
+    $key  = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment')
+    if ($key) {
+        try {
+            if ($key.GetValueNames() -contains 'Path') {
+                $raw = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+                $k   = $key.GetValueKind('Path')
+                if ($k -eq [Microsoft.Win32.RegistryValueKind]::String) { $kind = $k }
+            }
+        } finally { $key.Close() }
+    }
+    return @{ Value = $raw; Kind = $kind }
+}
+
+function Set-UserPathRaw {
+    param([string]$Value, $Kind)
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+    try { $key.SetValue('Path', $Value, $Kind) } finally { $key.Close() }
+    # 레지스트리 직접 쓰기는 변경 알림(WM_SETTINGCHANGE)을 보내지 않는다. 존재하지 않는
+    # 변수를 지우는 무해한 호출로 알림만 발생시켜, 새로 여는 터미널이 바뀐 PATH 를 받게 한다.
+    try { [Environment]::SetEnvironmentVariable('DEVSETUP_PATH_REFRESH', $null, 'User') } catch {}
+}
+
+# 사용자 PATH(레지스트리)와 현재 세션 PATH에 폴더를 멱등하게 추가한다. 관리자 권한 불필요.
+# 사용자 PATH가 실제로 바뀌었으면 $true 를 돌려준다.
+#
+# -BeforeStoreAliases: Windows 의 "앱 실행 별칭" 폴더(...\Microsoft\WindowsApps)보다
+# 앞에 오도록 맨 앞에 둔다. 그 폴더의 python.exe 는 Microsoft Store 를 여는 스텁이라,
+# 우리 폴더가 뒤에 있으면 `python` 을 쳤을 때 설치한 Python 대신 스텁이 잡힌다.
+function Add-UserPath {
+    param([string]$Dir, [switch]$BeforeStoreAliases)
+    $want  = $Dir.TrimEnd('\')
+    $cur   = Get-UserPathRaw
+    $parts = @($cur.Value -split ';' | Where-Object { $_ })
+    $idx = -1; $storeIdx = -1
+    for ($i = 0; $i -lt $parts.Count; $i++) {
+        # 비교는 확장한 값으로, 저장은 원문 그대로 (%USERPROFILE%\... 항목 보존).
+        $p = [Environment]::ExpandEnvironmentVariables($parts[$i]).TrimEnd('\')
+        if ($idx -lt 0 -and $p -ieq $want) { $idx = $i }
+        if ($storeIdx -lt 0 -and $p -like '*\Microsoft\WindowsApps') { $storeIdx = $i }
+    }
+
+    $newParts = $null
+    if ($idx -lt 0) {
+        $newParts = if ($BeforeStoreAliases) { @($Dir) + $parts } else { $parts + @($Dir) }
+    } elseif ($BeforeStoreAliases -and $storeIdx -ge 0 -and $idx -gt $storeIdx) {
+        $rest = @(for ($i = 0; $i -lt $parts.Count; $i++) { if ($i -ne $idx) { $parts[$i] } })
+        $newParts = @($Dir) + $rest
+    }
+    $changed = ($null -ne $newParts)
+    if ($changed) { Set-UserPathRaw -Value ($newParts -join ';') -Kind $cur.Kind }
+
+    $sessionParts = @($env:Path -split ';' | ForEach-Object { $_.TrimEnd('\') })
+    if ($BeforeStoreAliases) {
+        if ($sessionParts.Count -eq 0 -or $sessionParts[0] -ine $want) { $env:Path = "$Dir;$env:Path" }
+    } elseif ($sessionParts -inotcontains $want) {
+        $env:Path = $env:Path.TrimEnd(';') + ";$Dir"
+    }
+    return $changed
+}
+
+# Remove an npm-installed copy of a tool that now has a native install (claude, codex).
+# Which copy runs depends on PATH order, and that order differs between contexts: for
+# Claude Code this script appends ~\.local\bin to the END of the user PATH (unless the uv
+# step later moves it to the front), so on a PC where Node's %APPDATA%\npm came first, a
+# leftover npm copy wins in new terminals. Detected with `npm ls`, not Get-Command,
+# because the first hit depends on the current PATH.
+# Same tool, same vendor, so no prompt. Call it only AFTER the native binary exists, and
+# it refuses unless the native folder is on the persistent (user or machine) PATH -
+# otherwise removing the npm copy would leave no `claude`/`codex` in new terminals.
+# Returns $true when it printed something, so the caller can fix its progress line.
+function Remove-NpmDuplicate {
+    param([string]$NpmName, [string]$Cmd, [string]$NativeDir)
+    if (-not $NpmName) { return $false }
+    $npm = Get-Command npm.cmd -CommandType Application -ErrorAction SilentlyContinue
+    if (-not $npm) { return $false }
+    $ls  = & $npm.Source ls -g $NpmName --depth=0 --json 2>$null | Out-String
+    $has = $false
+    try {
+        $deps = ($ls | ConvertFrom-Json).dependencies
+        $has  = [bool]($deps -and $deps.PSObject.Properties[$NpmName])
+    } catch {}
+    if (-not $has) { return $false }
+    $want   = [Environment]::ExpandEnvironmentVariables($NativeDir).TrimEnd('\')
+    $onPath = $false
+    foreach ($scope in 'User', 'Machine') {
+        foreach ($p in @([Environment]::GetEnvironmentVariable('Path', $scope) -split ';')) {
+            if ($p -and ([Environment]::ExpandEnvironmentVariables($p).TrimEnd('\') -ieq $want)) { $onPath = $true }
+        }
+    }
+    if (-not $onPath) {
+        Write-Host ""
+        Write-Host "  kept the npm copy of ${Cmd} - the native folder ($NativeDir) is not on your PATH yet." -ForegroundColor Yellow
+        return $true
+    }
+    Write-Host ""
+    Write-Host "  removing duplicate npm copy of $Cmd ($NpmName) - the native install replaces it..." -ForegroundColor Yellow -NoNewline
+    $null = & $npm.Source uninstall -g $NpmName 2>&1 | Out-String
+    if ($LASTEXITCODE -eq 0) { Write-Host " done" -ForegroundColor Green }
+    else { Write-Host " failed (npm exit $LASTEXITCODE). Remove it later:  npm uninstall -g $NpmName" -ForegroundColor Yellow }
+    return $true
 }
 
 # ── Non-interactive / dry-run (unattended installs and CI) ──────────────────
@@ -45,7 +161,7 @@ $packages = @(
     @{
         Id   = "OpenJS.NodeJS.LTS"
         Name = "Node.js LTS"
-        Desc = "JS runtime. Required for codex, gemini-cli, omc, omx."
+        Desc = "JS runtime. Keep this on: the omc plugin's hooks, omx and npx-based MCP servers all run on Node (Claude Code itself is native)."
         Ex   = "node --version / npm install -g <pkg>"
         On   = $true
     },
@@ -71,17 +187,24 @@ $packages = @(
         Ex   = "pwsh"
         On   = $true
     },
+    # Off by default on Windows: the profile draws its own pure-PowerShell prompt and
+    # never uses Starship. Enabling Starship runs an external exe on every prompt, which
+    # measured 1.6-2.0 s per prompt on a PC with real-time antivirus scanning
+    # (pure-PS prompt: 17-103 ms). Still selectable for people who want it.
     @{
         Id   = "Starship.Starship"
         Name = "Starship"
-        Desc = "Fast prompt. NOTE: this profile uses its own pure-PS prompt for speed; Starship is installed but idle until you enable it (see README)."
+        Desc = "Optional prompt (off by default). This profile uses its own faster pure-PS prompt; Starship stays idle until you enable it (see README)."
         Ex   = "'Invoke-Expression (&starship init powershell)' | Add-Content `$PROFILE"
-        On   = $true
+        On   = $false
     },
+    # Keep on even without Starship: the legacy console's default font (Consolas) has
+    # no glyph for the prompt arrow U+276F, so it shows as a box there. Windows
+    # Terminal's default (Cascadia Mono) has it; the Nerd Font covers both.
     @{
         Id       = "DEVCOM.JetBrainsMonoNerdFont"
         Name     = "JetBrainsMono Nerd Font"
-        Desc     = "Nerd Font for Starship icons. Prevents broken glyphs in the prompt."
+        Desc     = "Prevents broken glyphs: the prompt arrow in the old console window, plus icons for Starship/eza."
         Ex       = "Set terminal font to 'JetBrainsMono Nerd Font' after install"
         On       = $true
         Optional = $true
@@ -107,18 +230,57 @@ $packages = @(
         Ex   = "rg 'function' src/"
         On   = $true
     },
+    # "Comfort plus" tools, same set as macOS/Linux. Optional = a failed install is
+    # reported as skipped, never as a failure of the whole run. IDs are the ones the
+    # projects themselves publish (checked with `winget show --id <id> --exact`).
     @{
-        Id   = "Python.Python.3.12"
-        Name = "Python 3.12"
-        Desc = "General purpose language. Data, automation, AI."
-        Ex   = "python --version / pip install <pkg>"
-        On   = $true
+        Id       = "eza-community.eza"
+        Name     = "eza"
+        Desc     = "Modern ls. The profile adds ll / la / lt."
+        Ex       = "ll  /  la  /  lt (tree)"
+        On       = $true
+        Optional = $true
     },
     @{
+        Id       = "sharkdp.bat"
+        Name     = "bat"
+        Desc     = "cat with syntax highlighting. Run it as 'bat' (PowerShell's own cat is left alone)."
+        Ex       = "bat README.md"
+        On       = $true
+        Optional = $true
+    },
+    @{
+        Id       = "sharkdp.fd"
+        Name     = "fd"
+        Desc     = "Fast find that respects .gitignore. Also speeds up fzf's Ctrl+T file search."
+        Ex       = "fd .ps1"
+        On       = $true
+        Optional = $true
+    },
+    @{
+        Id       = "dandavison.delta"
+        Name     = "delta"
+        Desc     = "Readable git diff. Set as git's pager unless you already have one."
+        Ex       = "git diff"
+        On       = $true
+        Optional = $true
+    },
+    @{
+        Id       = "dbrgn.tealdeer"
+        Name     = "tldr (tealdeer)"
+        Desc     = "Short, example-first command help."
+        Ex       = "tldr tar"
+        On       = $true
+        Optional = $true
+    },
+    # Python 은 winget 으로 특정 버전을 고정 설치하지 않는다. 고정값은 금방 낡는다.
+    # (3.12 고정이 3.15 시대까지 남아 있었다.) uv 가 최신 Python 을 직접 받아 관리한다.
+    # 아래 "Python via uv" 단계 참고. 버전 하드코딩 금지.
+    @{
         Id   = "astral-sh.uv"
-        Name = "uv"
-        Desc = "Fast Python package and project manager (pip/venv replacement)."
-        Ex   = "uv venv / uv pip install <pkg>"
+        Name = "uv + Python"
+        Desc = "Fast Python manager (pip/venv replacement). Also installs the latest Python itself (uv python install)."
+        Ex   = "python --version / uv venv / uv pip install <pkg>"
         On   = $true
     }
 )
@@ -140,11 +302,15 @@ $npmPackages = @(
         Native    = $true
         Installer = "https://chatgpt.com/codex/install.ps1"
     },
+    # Gemini CLI(@google/gemini-cli)의 후속. Google 이 2026-06-18 부터 무료/Pro/Ultra
+    # 계정의 Gemini CLI 요청을 받지 않아(유료 API 키만 유지) Antigravity CLI 로 교체했다.
     @{
-        Name = "@google/gemini-cli"
-        Desc = "Google Gemini CLI."
-        Ex   = "gemini 'explain this code'"
-        On   = $true
+        Name      = "Antigravity CLI (Google)"
+        Desc      = "Google's terminal coding agent (agy) - successor to Gemini CLI. Native installer, no Node dependency, self-updating."
+        Ex        = "agy"
+        On        = $true
+        Native    = $true
+        Installer = "https://antigravity.google/cli/install.ps1"
     },
     @{
         Name = "oh-my-codex"
@@ -256,6 +422,16 @@ if ($needsNode) {
     }
 }
 
+# The omc plugin is installed by hand after this script (not in the menu), so the rule
+# above cannot see it. Its hooks and MCP server run `node`, so warn - without forcing it
+# back on - when Node was unchecked and is not on this PC already.
+$nodePkgSel = $packages | Where-Object { $_.Name -eq "Node.js LTS" }
+if ($nodePkgSel -and -not $nodePkgSel.On -and -not (Get-Command node -ErrorAction SilentlyContinue)) {
+    Write-Host "Warning: Node.js is not selected and not installed." -ForegroundColor Yellow
+    Write-Host "  The omc (oh-my-claudecode) plugin's hooks, omx and npx-based MCP servers need Node." -ForegroundColor DarkGray
+    Write-Host "  Claude Code itself works without it. To add it later:  winget install OpenJS.NodeJS.LTS" -ForegroundColor DarkGray
+}
+
 # ── Summary ───────────────────────────────────────────────
 Write-Host ""
 Write-Host "Items to install:" -ForegroundColor Green
@@ -280,15 +456,57 @@ $wingetIdx    = 0
 $failedPkgs   = @()
 $optionalFails = @()
 
+# One winget scan instead of one `winget list` per package. Each `winget list --id`
+# rescans everything installed (measured ~14 s per call on a PC with real-time
+# antivirus); `winget export` scans once (~57 s there for 104 packages, vs ~139 s for
+# 10 separate lists) and writes JSON, so the result does not depend on the UI language
+# or on column truncation. Any failure falls back to the old per-package check.
+$installedIds = $null   # PackageIdentifier -> source name ('winget' / 'msstore'); $null = unknown
+if (-not $DryRun -and $wingetList.Count -gt 0) {
+    Write-Host "Checking what is already installed (one winget scan, can take a minute)..." -ForegroundColor DarkGray
+    $expFile = Join-Path $env:TEMP "devsetup-winget-export-$PID.json"
+    try {
+        winget export -o $expFile --accept-source-agreements 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $expFile)) {
+            $exp = Get-Content $expFile -Raw -Encoding UTF8 | ConvertFrom-Json
+            $scan = @{}
+            foreach ($src in @($exp.Sources)) {
+                foreach ($p in @($src.Packages)) { $scan[[string]$p.PackageIdentifier] = [string]$src.SourceDetails.Name }
+            }
+            $installedIds = $scan
+        }
+    } catch {
+        $installedIds = $null
+    } finally {
+        Remove-TempPath $expFile
+    }
+}
+
 foreach ($pkg in $wingetList) {
     $wingetIdx++
     Write-Host "[$wingetIdx/$wingetTotal] $($pkg.Name)..." -ForegroundColor Cyan -NoNewline
     if ($DryRun) { Write-Host " [DRY-RUN] would install/upgrade ($($pkg.Id))" -ForegroundColor DarkGray; continue }
 
+    # Running inside PowerShell 7 itself: pwsh is evidently installed, and letting winget
+    # upgrade it now makes the installer close every running pwsh.exe - including the
+    # one executing this script, which then dies mid-run (seen on a CI runner: the log
+    # just stops at "PowerShell 7..."). Leave the upgrade to a later run from Windows
+    # PowerShell (the default blue "PowerShell" window) or to `winget upgrade` by hand.
+    if ($pkg.Id -eq 'Microsoft.PowerShell' -and $PSVersionTable.PSEdition -eq 'Core') {
+        Write-Host " [OK - running in PowerShell $($PSVersionTable.PSVersion); not upgrading the shell that runs this script]" -ForegroundColor Green
+        Write-Host "    To upgrade it later, from Windows PowerShell:  winget upgrade Microsoft.PowerShell" -ForegroundColor DarkGray
+        continue
+    }
+
     # Check if already installed, and from which source
-    $listOut = winget list --id $pkg.Id --exact --accept-source-agreements 2>&1 | Out-String
-    $alreadyInstalled = ($LASTEXITCODE -eq 0)
-    $isStoreManaged   = $alreadyInstalled -and ($listOut -match 'msstore|Microsoft Store')
+    if ($null -ne $installedIds) {
+        $alreadyInstalled = $installedIds.ContainsKey($pkg.Id)
+        $isStoreManaged   = $alreadyInstalled -and ($installedIds[$pkg.Id] -eq 'msstore')
+    } else {
+        $listOut = winget list --id $pkg.Id --exact --accept-source-agreements 2>&1 | Out-String
+        $alreadyInstalled = ($LASTEXITCODE -eq 0)
+        $isStoreManaged   = $alreadyInstalled -and ($listOut -match 'msstore|Microsoft Store')
+    }
 
     if ($isStoreManaged) {
         Write-Host " [SKIP] Microsoft Store version detected - uninstall it first to use winget version" -ForegroundColor Yellow
@@ -346,6 +564,43 @@ $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";
             [System.Environment]::GetEnvironmentVariable("Path", "User") + ";" +
             "$env:APPDATA\npm"
 
+# ── delta as git pager / tldr page cache (same as macOS/Linux) ──
+# delta: only when no pager is configured at ANY level (system/global/local config, or
+#   GIT_PAGER / PAGER) - an existing choice is the user's. diffFilter likewise only if unset.
+# tldr: tealdeer ships without pages; fetch them when `tldr --list` has nothing yet, so
+#   a failed first download is retried on the next run.
+# -CommandType Application: never pick up a user's function/alias named git/delta/tldr.
+if (-not $DryRun) {
+    $deltaPkg = $packages | Where-Object { $_.Id -eq 'dandavison.delta' }
+    $gitCmd   = Get-Command git   -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    $deltaCmd = Get-Command delta -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($deltaPkg -and $deltaPkg.On -and $gitCmd -and $deltaCmd) {
+        $curPager = (& $gitCmd.Source config core.pager 2>$null | Out-String).Trim()
+        if (-not $curPager) { $curPager = "$env:GIT_PAGER".Trim() }
+        if (-not $curPager) { $curPager = "$env:PAGER".Trim() }
+        if ($curPager -eq 'delta') {
+            Write-Host "git pager: delta (already set)" -ForegroundColor DarkGray
+        } elseif ($curPager) {
+            Write-Host "git pager: kept your existing setting ($curPager)" -ForegroundColor DarkGray
+        } else {
+            & $gitCmd.Source config --global core.pager delta
+            $curFilter = (& $gitCmd.Source config interactive.diffFilter 2>$null | Out-String).Trim()
+            if (-not $curFilter) { & $gitCmd.Source config --global interactive.diffFilter "delta --color-only" }
+            Write-Host "git pager: delta (highlighted git diff)" -ForegroundColor DarkGray
+        }
+    }
+    $tldrPkg = $packages | Where-Object { $_.Id -eq 'dbrgn.tealdeer' }
+    $tldrCmd = Get-Command tldr -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($tldrPkg -and $tldrPkg.On -and $tldrCmd) {
+        $tldrPages = (& $tldrCmd.Source --list 2>$null | Select-Object -First 1)
+        if (-not $tldrPages) {
+            & $tldrCmd.Source --update 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) { Write-Host "tldr: page cache downloaded" -ForegroundColor DarkGray }
+            else { Write-Host "tldr: page download failed - it is retried on the next run (or run 'tldr --update')" -ForegroundColor DarkGray }
+        }
+    }
+}
+
 # ── zoxide fallback: standalone binary if winget failed ───
 # winget can crash (0xC0000005) or be denied (exit 5) on locked-down PCs and
 # never recover. zoxide ships as a single static binary, so when it is still
@@ -369,16 +624,78 @@ if ($zoxidePkg -and $zoxidePkg.On -and -not $DryRun -and -not (Get-Command zoxid
         New-Item -ItemType Directory -Force -Path $binDir | Out-Null
         Copy-Item $exe.FullName (Join-Path $binDir 'zoxide.exe') -Force
         # Persist on the user PATH (no admin needed) and add to the current session.
-        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-        if ($userPath -notlike "*$binDir*") {
-            [Environment]::SetEnvironmentVariable('Path', "$userPath;$binDir", 'User')
-        }
-        $env:Path += ";$binDir"
+        Add-UserPath $binDir | Out-Null
         $failedPkgs = @($failedPkgs | Where-Object { $_ -notlike 'zoxide*' })
         Write-Host "  zoxide $($rel.tag_name) installed to $binDir and added to PATH." -ForegroundColor Green
     } catch {
         Write-Host "  zoxide fallback failed: $($_.Exception.Message)" -ForegroundColor Red
         Write-Host "  Install manually from https://github.com/ajeetdsouza/zoxide/releases" -ForegroundColor DarkGray
+    }
+}
+
+# ── Python via uv ─────────────────────────────────────────
+# winget 으로 Python 버전을 고정 설치하는 대신 uv 가 최신 Python 을 받아 관리한다.
+# --default 는 버전 명령(python3.x) 외에 `python`/`python3` 까지 만든다.
+#   * 이미 진짜 Python 이 PATH 에 있으면(스토어 스텁·uv 관리본 제외) 그대로 둔다 -
+#     기본 python 을 말없이 바꾸면 기존 전역 패키지 환경이 깨질 수 있다.
+#   * 실행 파일은 ~\.local\bin 에 놓이므로 스토어 스텁보다 앞에 오도록 PATH 를 맞춘다.
+$uvPkg = $packages | Where-Object { $_.Id -eq 'astral-sh.uv' }
+if ($uvPkg -and $uvPkg.On) {
+    Write-Host "Python (latest, managed by uv)..." -ForegroundColor Cyan -NoNewline
+    $localBin = Join-Path $env:USERPROFILE '.local\bin'
+    $uvCmd    = Get-Command uv -ErrorAction SilentlyContinue
+    if ($DryRun) {
+        Write-Host " [DRY-RUN] would run: uv python install --default" -ForegroundColor DarkGray
+    } elseif (-not $uvCmd) {
+        # uv 설치 실패는 위 winget 단계에서 이미 실패 목록에 들어갔다 - 중복 집계하지 않는다.
+        Write-Host " [SKIP] uv not found" -ForegroundColor Yellow
+    } else {
+        # ...\Microsoft\WindowsApps\python.exe 는 두 가지일 수 있다: Store 를 여는 빈 스텁,
+        # 또는 Microsoft Store / Python Install Manager 로 설치한 진짜 Python 의 별칭.
+        # 경로만으로는 구별이 안 되므로 실제로 --version 을 돌려 본다 (스텁은 exit 9009).
+        $realPy = $null
+        foreach ($cand in @(Get-Command python -All -ErrorAction SilentlyContinue)) {
+            $src = $cand.Source
+            if (-not $src -or $src -like "$localBin\*") { continue }
+            if ($src -like '*\Microsoft\WindowsApps\*') {
+                $isReal = $false
+                try {
+                    $verOut = (& $src --version 2>&1 | Out-String)
+                    $isReal = ($LASTEXITCODE -eq 0 -and $verOut -match 'Python \d+\.\d+')
+                } catch {}
+                if (-not $isReal) { continue }
+            }
+            $realPy = $cand; break
+        }
+        if ($realPy) {
+            Write-Host " [OK - existing Python kept: $($realPy.Source)]" -ForegroundColor Green
+            Write-Host "  To switch to the latest later:  uv python install --default" -ForegroundColor DarkGray
+        } else {
+            $withDefault = $true
+            $pyOut = & $uvCmd.Source python install --default 2>&1 | Out-String
+            if ($LASTEXITCODE -ne 0) {
+                # 구버전 uv 등 --default 를 못 쓰는 환경: 버전 명령만 만드는 기본 설치로 폴백.
+                $withDefault = $false
+                $pyOut = & $uvCmd.Source python install 2>&1 | Out-String
+            }
+            if ($LASTEXITCODE -eq 0) {
+                Add-UserPath $localBin -BeforeStoreAliases | Out-Null
+                $pyExe = Join-Path $localBin 'python.exe'
+                $pyVer = if (Test-Path $pyExe) { (& $pyExe --version 2>&1 | Out-String).Trim() } else { '' }
+                if ($withDefault -and $pyVer) {
+                    Write-Host " [OK - $pyVer]" -ForegroundColor Green
+                } else {
+                    Write-Host " [OK]" -ForegroundColor Green
+                    Write-Host "  'python' shortcut was not created - run Python with:  uv run python" -ForegroundColor DarkGray
+                }
+            } else {
+                Write-Host " [FAILED] exit $LASTEXITCODE" -ForegroundColor Red
+                $failedPkgs += "Python via uv (exit $LASTEXITCODE)"
+                $pyLog = Join-Path $env:TEMP 'omc-install-python-uv.log'
+                $pyOut | Out-File -FilePath $pyLog -Encoding utf8
+                Write-Host "    full log saved to: $pyLog" -ForegroundColor DarkGray
+            }
+        }
     }
 }
 
@@ -432,29 +749,38 @@ if ($selectedNpm) {
             # 실제 설치 경로는 도구마다 다르다: Claude Code 는 ~/.local\bin\claude.exe,
             # codex 는 %LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe 에 설치된다.
             # (이전엔 codex 도 ~/.local\bin 으로 잘못 확인해 항상 재설치를 시도했다.)
+            # Antigravity CLI 는 %LOCALAPPDATA%\agy\bin\agy.exe (공식 install.ps1 의 TARGET_DIR).
             if ($pkg.Name -eq 'Claude Code') {
                 $nativeBin = Join-Path $env:USERPROFILE '.local\bin\claude.exe'
                 $nativeCmd = 'claude'; $npmName = '@anthropic-ai/claude-code'
+            } elseif ($pkg.Name -like 'Antigravity*') {
+                $nativeBin = Join-Path $env:LOCALAPPDATA 'agy\bin\agy.exe'
+                $nativeCmd = 'agy';    $npmName = $null   # npm 판이 없다 (Gemini CLI 는 별개 패키지)
             } else {
                 $nativeBin = Join-Path $env:LOCALAPPDATA 'Programs\OpenAI\Codex\bin\codex.exe'
                 $nativeCmd = 'codex';  $npmName = '@openai/codex'
             }
+            # 아래 symlink 우회·standalone 정리 재시도는 codex 전용이다.
+            # 이름 비교를 "Claude Code 가 아니면"으로 하면, 다른 네이티브 도구 설치가
+            # 실패했을 때 멀쩡한 Codex 설치 폴더를 지우게 된다. codex 여부를 명시적으로 판별한다.
+            $isCodex = ($nativeCmd -eq 'codex')
 
-            # 이미 네이티브로 설치돼 있으면 대용량 재다운로드 skip — 네이티브 빌드는
-            # 백그라운드 자동 업데이트가 있어 기존 설치로 충분 (mac/linux와 동일 동작)
+            # 이미 네이티브로 설치돼 있으면 대용량 재다운로드를 건너뛴다 (mac/linux와 동일).
+            # 네이티브 빌드는 백그라운드 자동 업데이트가 있어 기존 설치로 충분하다.
+            # A leftover npm copy is removed on BOTH paths: before this, the cleanup only ran
+            # on a fresh native install, so a PC that already had the native build kept its
+            # npm copy forever (and it could shadow the native one, see Remove-NpmDuplicate).
             if (Test-Path $nativeBin) {
-                Write-Host " [OK - already installed (native, self-updating)]" -ForegroundColor Green
+                $nativeDir = Split-Path $nativeBin
+                # Claude's native installer never adds ~\.local\bin to PATH (codex's and
+                # agy's do). Make sure it is there before the npm copy can be removed.
+                if (-not $isCodex) { $null = Add-UserPath $nativeDir }
+                if (Remove-NpmDuplicate $npmName $nativeCmd $nativeDir) {
+                    Write-Host "  -> $($pkg.Name) [OK - native install kept (self-updating)]" -ForegroundColor Green
+                } else {
+                    Write-Host " [OK - already installed (native, self-updating)]" -ForegroundColor Green
+                }
                 continue
-            }
-
-            # 비-native(npm/bun) 설치본이 있으면 먼저 제거하고 native 로 교체한다.
-            # 안 지우면 PATH 순서로 어느 쪽 codex/claude 가 실행될지 애매해진다.
-            $existingCmd = Get-Command $nativeCmd -ErrorAction SilentlyContinue
-            if ($existingCmd -and ($existingCmd.Source -match 'node_modules|\\npm\\|\.bun\\')) {
-                Write-Host ""
-                Write-Host "  removing non-native $nativeCmd at $($existingCmd.Source) ..." -ForegroundColor Yellow
-                $npmRm = Get-Command npm.cmd -ErrorAction SilentlyContinue
-                if ($npmRm) { & $npmRm.Source uninstall -g $npmName 2>&1 | Out-Null }
             }
 
             Write-Host ""
@@ -472,7 +798,7 @@ if ($selectedNpm) {
             $savedTemp = $env:TEMP; $savedTmp = $env:TMP
             $savedCodexHome = $env:CODEX_HOME; $savedNI = $env:CODEX_NON_INTERACTIVE
             $env:CODEX_NON_INTERACTIVE = '1'   # "Start Codex now?" Read-Host 멈춤 방지
-            if ($pkg.Name -ne 'Claude Code' -and $profileIsLink) {
+            if ($isCodex -and $profileIsLink) {
                 $env:CODEX_HOME = Join-Path $profReal '.codex'
                 $realTemp = Join-Path $profReal 'AppData\Local\Temp'
                 if (Test-Path $realTemp) { $env:TEMP = $realTemp; $env:TMP = $realTemp }
@@ -480,15 +806,15 @@ if ($selectedNpm) {
 
             try {
                 Invoke-RestMethod $pkg.Installer -OutFile $tmp
-                # 출력을 캡처(=리다이렉트)하면 프롬프트도 자동 우회되고, 실패 시 실제
-                # 원인(tar/symlink/네트워크)을 로그로 남겨 이슈 리포트에 담을 수 있다.
+                # 출력을 캡처(=리다이렉트)하면 프롬프트도 자동 우회되고, 실패 시 실제 원인
+                # (tar/symlink/네트워크)을 로그로 남겨 이슈 리포트에 담을 수 있다.
                 $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $tmp 2>&1 | Out-String
                 $out | Out-File -FilePath $nativeLog -Encoding utf8
                 if ($out.Trim()) { Write-Host $out.TrimEnd() -ForegroundColor DarkGray }
 
                 # codex 에 표기 충돌(ASCII vs 한글)로 남은 옛 정션이 있으면 "Refusing to
                 # retarget junction" 으로 실패한다. standalone 을 정리하고 1회 재시도.
-                if ($pkg.Name -ne 'Claude Code' -and -not (Test-Path $nativeBin) -and $profileIsLink) {
+                if ($isCodex -and -not (Test-Path $nativeBin) -and $profileIsLink) {
                     Write-Host "  retry (clean standalone)..." -ForegroundColor DarkGray
                     Remove-Item (Join-Path $env:CODEX_HOME 'packages\standalone') -Recurse -Force -ErrorAction SilentlyContinue
                     Remove-Item (Join-Path $env:LOCALAPPDATA 'Programs\OpenAI\Codex') -Recurse -Force -ErrorAction SilentlyContinue
@@ -497,23 +823,25 @@ if ($selectedNpm) {
                     if ($out2.Trim()) { Write-Host $out2.TrimEnd() -ForegroundColor DarkGray }
                 }
 
-                # 성공 판정은 exit code 가 아니라 실제 바이너리 존재로 한다 — 네이티브
-                # 설치기가 성공해도 비정상 종료 코드를 남기는 경우가 있어 오탐을 막는다.
+                # 성공 판정은 exit code 가 아니라 실제 바이너리 존재로 한다 (네이티브 설치기가
+                # 성공해도 비정상 종료 코드를 남기는 경우가 있어 오탐을 막는다).
                 if (Test-Path $nativeBin) {
                     Write-Host "  -> $($pkg.Name) [OK - native installer]" -ForegroundColor Green
                     # Claude Code's Windows native installer drops claude.exe in
                     # %USERPROFILE%\.local\bin but, unlike codex, does NOT add that
                     # folder to PATH. Persist it (and add to this session) so the
                     # `claude` command resolves after install / in a new terminal.
-                    if ($pkg.Name -eq 'Claude Code') {
-                        $localBin = Join-Path $env:USERPROFILE '.local\bin'
-                        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-                        if ($userPath -notlike "*$localBin*") {
-                            [Environment]::SetEnvironmentVariable('Path', ($userPath.TrimEnd(';') + ';' + $localBin), 'User')
-                            Write-Host "     added $localBin to your PATH" -ForegroundColor DarkGray
+                    # Antigravity's installer hands PATH setup to `agy install`; the same
+                    # idempotent call is a safety net in case that step was skipped.
+                    $nativeDir = Split-Path $nativeBin
+                    if (-not $isCodex) {
+                        if (Add-UserPath $nativeDir) {
+                            Write-Host "     added $nativeDir to your PATH" -ForegroundColor DarkGray
                         }
-                        if ($env:Path -notlike "*$localBin*") { $env:Path += ";$localBin" }
                     }
+                    # Only now that the native build is in place: if the native install had
+                    # failed, removing the npm copy first would leave the user with neither.
+                    $null = Remove-NpmDuplicate $npmName $nativeCmd $nativeDir
                 } else {
                     Write-Host "  -> $($pkg.Name) [FAILED] native installer (log: $nativeLog)" -ForegroundColor Red
                     $failedPkgs += "$($pkg.Name) (native installer)"
@@ -593,6 +921,57 @@ if ($selectedNpm) {
     }
 }
 
+# ── Old Gemini CLI: ask before removing ───────────────────
+# Older versions of this script installed @google/gemini-cli with npm. Google stopped
+# serving it for free/Pro/Ultra accounts on 2026-06-18, and this script no longer
+# updates it, so it is left frozen and (for personal accounts) unusable.
+#   * Ask first, default No: paid-API-key users may still rely on it.
+#   * Non-interactive / dry-run: never prompt, only print the manual command.
+#   * Only the npm package is removed. ~\.gemini is NEVER touched: Antigravity CLI
+#     keeps using it (GEMINI.md, MCP config, skills), and `agy plugin import gemini`
+#     reads the old extensions from there, so it still works after the uninstall.
+$geminiNpm = $null
+if (-not $DryRun) { $geminiNpm = Get-Command npm.cmd -ErrorAction SilentlyContinue }
+$geminiVer = $null
+if ($geminiNpm) {
+    $gLs = & $geminiNpm.Source ls -g '@google/gemini-cli' --depth=0 --json 2>$null | Out-String
+    if ($gLs) {
+        try {
+            $gDeps = ($gLs | ConvertFrom-Json).dependencies
+            if ($gDeps -and $gDeps.PSObject.Properties['@google/gemini-cli']) { $geminiVer = $gDeps.'@google/gemini-cli'.version }
+        } catch {}
+    }
+}
+if ($geminiVer) {
+    $agyBin = Join-Path $env:LOCALAPPDATA 'agy\bin\agy.exe'
+    Write-Host ""
+    Write-Host "Old Gemini CLI found (npm, v$geminiVer)." -ForegroundColor Yellow
+    Write-Host "  Google stopped serving it for free/Pro/Ultra accounts on 2026-06-18 (paid API keys still work)." -ForegroundColor DarkGray
+    Write-Host "  Antigravity CLI (agy) replaces it. Your settings in ~\.gemini are kept either way." -ForegroundColor DarkGray
+    $removeGemini = $false
+    if ($NonInteractive) {
+        Write-Host "  To remove it:  npm uninstall -g @google/gemini-cli" -ForegroundColor DarkGray
+    } else {
+        $gAns = Read-Host "  예전 Gemini CLI 를 삭제할까요? 유료 API 키로 계속 쓰신다면 N [y/N]"
+        $removeGemini = ($gAns -match '^(y|yes)$')
+        if (-not $removeGemini) { Write-Host "  Kept. Remove later with:  npm uninstall -g @google/gemini-cli" -ForegroundColor DarkGray }
+    }
+    if ($removeGemini) {
+        $gOut = & $geminiNpm.Source uninstall -g '@google/gemini-cli' 2>&1 | Out-String
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "  -> Gemini CLI removed (~\.gemini kept)." -ForegroundColor Green
+            if (Test-Path $agyBin) {
+                Write-Host "  Gemini extensions you used can be moved over with:  agy plugin import gemini" -ForegroundColor DarkGray
+            }
+        } else {
+            # Optional cleanup: report it, but never count it as an install failure.
+            Write-Host "  -> could not remove Gemini CLI (npm exit $LASTEXITCODE). Try:  npm uninstall -g @google/gemini-cli" -ForegroundColor Yellow
+            $gLines = @($gOut -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 4)
+            foreach ($l in $gLines) { Write-Host "    $($l.Trim())" -ForegroundColor DarkGray }
+        }
+    }
+}
+
 # ── oh-my-codex (omx) Windows caveat ──────────────────────
 # Per its README, omx is primarily tuned for macOS/Linux; native Windows is a
 # best-effort path that may behave inconsistently. Surface that so Windows users
@@ -606,19 +985,33 @@ if ($omxSelected) {
 }
 
 # Allow profile to run
-# Run in a child process to avoid the -ExecutionPolicy Bypass override from the parent shell
+# Run in a child process to avoid the -ExecutionPolicy Bypass override from the parent shell.
+# -NoProfile: without it the child loads the user's whole profile (zoxide, PSReadLine, ...)
+# just to change one setting - several seconds, and it printed "PowerShell loaded in Nms"
+# in the middle of the install output.
 if (-not $DryRun) {
     if (Get-Command pwsh -ErrorAction SilentlyContinue) {
-        pwsh -Command "Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force" 2>$null
+        pwsh -NoProfile -Command "Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force" 2>$null
     } else {
         Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force -ErrorAction SilentlyContinue
     }
 }
 
-# Download PowerShell profile from the repo
+# Install the PowerShell profile.
+# Run from a repo clone (install.ps1 executed as a file, profile right next to it): use
+# that local copy, so edits in the clone are what gets installed - same rule as
+# install.sh, which runs the local setup-*.sh. Otherwise (irm | iex) download from main.
+# $PSCommandPath is empty for an interactive `irm | iex`, so a one-liner never picks up
+# a file from whatever folder the user happens to be in.
 if (-not $DryRun) {
-    Write-Host "Downloading PowerShell profile..." -ForegroundColor Cyan
     $gistUrl = "https://raw.githubusercontent.com/hd0126/dev-setup/main/Microsoft.PowerShell_profile.ps1"
+    $localProfile = $null
+    if ($PSCommandPath) {
+        $cand = Join-Path (Split-Path -Parent $PSCommandPath) 'Microsoft.PowerShell_profile.ps1'
+        if (Test-Path -LiteralPath $cand) { $localProfile = $cand }
+    }
+    if ($localProfile) { Write-Host "Installing PowerShell profile (local copy: $localProfile)..." -ForegroundColor Cyan }
+    else               { Write-Host "Downloading PowerShell profile..." -ForegroundColor Cyan }
     $pwshProfilePath = Join-Path ([Environment]::GetFolderPath("MyDocuments")) "PowerShell\Microsoft.PowerShell_profile.ps1"
     $profileDir = Split-Path $pwshProfilePath
     New-Item -Path $profileDir -ItemType Directory -Force | Out-Null
@@ -627,12 +1020,15 @@ if (-not $DryRun) {
         Copy-Item $pwshProfilePath $bakPath
         Write-Host "  Existing profile backed up: $bakPath" -ForegroundColor DarkGray
     }
-    Invoke-WebRequest -Uri $gistUrl -OutFile $pwshProfilePath -UseBasicParsing
+    if ($localProfile) { Copy-Item -LiteralPath $localProfile -Destination $pwshProfilePath -Force }
+    else               { Invoke-WebRequest -Uri $gistUrl -OutFile $pwshProfilePath -UseBasicParsing }
 
-    # 방금 설치된 도구(zoxide/fzf/starship)가 프로필의 도구 캐시에 반영되도록
+    # 방금 설치된 도구(zoxide/fzf/starship)가 프로필의 도구 캐시에 반영되도록 (아래)
     # 캐시를 무효화한다 — 안 하면 이전 캐시(도구 없음)가 남아 zoxide/fzf가
     # 새 터미널에서도 계속 비활성 상태로 보인다.
-    Remove-TempPath "$env:TEMP\pwsh_tools_cache.ps1", "$env:TEMP\zoxide_init_cache.ps1"
+    # pwsh_profile_cache.ps1 is the current single cache; the other two are the older
+    # two-file layout, removed so they do not linger.
+    Remove-TempPath "$env:TEMP\pwsh_profile_cache.ps1", "$env:TEMP\pwsh_tools_cache.ps1", "$env:TEMP\zoxide_init_cache.ps1"
     Write-Host "  Tool cache invalidated (fresh detection on next shell)." -ForegroundColor DarkGray
 } else {
     Write-Host "[DRY-RUN] would download the PowerShell profile to `$PROFILE." -ForegroundColor DarkGray
@@ -818,7 +1214,7 @@ if ($DryRun) {
         $c = Get-Command $n -ErrorAction SilentlyContinue
         if ($c) { return "- ${n}: $($c.Source)" } else { return "- ${n}: (not found)" }
     }
-    $toolLines = @('node','npm','git','codex','claude','winget','python','uv') | ForEach-Object { Get-CmdInfo $_ }
+    $toolLines = @('node','npm','git','codex','claude','agy','winget','python','uv') | ForEach-Object { Get-CmdInfo $_ }
 
     $reportBody = @"
 ## 환경 (Environment)
@@ -909,7 +1305,7 @@ if ($npmNativeFail) {
     Write-Host "This needs the C++ build tools. Fix it with:" -ForegroundColor DarkGray
     Write-Host '  winget install Microsoft.VisualStudio.2022.BuildTools --silent --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"' -ForegroundColor DarkGray
     Write-Host "  # then open a NEW terminal and re-run the failed npm install, e.g.:" -ForegroundColor DarkGray
-    Write-Host "  npm install -g oh-my-claude-sisyphus" -ForegroundColor DarkGray
+    Write-Host "  npm install -g oh-my-codex" -ForegroundColor DarkGray
     Write-Host "If you are behind a corporate proxy/firewall, prebuilt binaries may be blocked;" -ForegroundColor DarkGray
     Write-Host "configure npm proxy (npm config set proxy ...) or try another network." -ForegroundColor DarkGray
 }

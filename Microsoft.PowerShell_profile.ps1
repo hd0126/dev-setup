@@ -16,27 +16,75 @@ function conda {
     conda @args
 }
 
-# --- 3. Tool availability cache (재생성: Remove-Item ([IO.Path]::GetFullPath("$env:TEMP\pwsh_tools_cache.ps1"))) ---
-$toolsCache = "$env:TEMP\pwsh_tools_cache.ps1"
-if (-not (Test-Path $toolsCache)) {
-    $z = [bool](Get-Command zoxide   -ErrorAction SilentlyContinue)
-    $f = [bool](Get-Command fzf      -ErrorAction SilentlyContinue)
-    $s = [bool](Get-Command starship -ErrorAction SilentlyContinue)
-    @(
-        "`$hasZoxide   = `$$($z.ToString().ToLower())"
-        "`$hasFzf      = `$$($f.ToString().ToLower())"
-        "`$hasStarship = `$$($s.ToString().ToLower())"
-    ) -join "`n" | Out-File $toolsCache -Encoding UTF8
+# --- 3. 도구 캐시: 설치 여부 + zoxide init 을 파일 하나에 ---
+# 첫 줄에 이 프로필과 각 도구 exe 의 수정 시각을 적어 두고, 시작할 때마다 그 시각만
+# 비교한다(Get-Command·zoxide.exe 실행 없이 파일 시각 몇 개 읽기). 프로필이 바뀌거나
+# `winget upgrade zoxide` 등으로 exe 가 바뀌면 자동으로 다시 만든다 — 예전에는 캐시를
+# 지우기 전까지 옛 zoxide init 을 계속 썼다. 캐시를 만든 뒤에 새로 설치한 도구는
+# install.ps1 이 캐시를 지워 반영한다. 강제 재생성:
+#   Remove-Item ([IO.Path]::GetFullPath("$env:TEMP\pwsh_profile_cache.ps1"))
+$profileCache = "$env:TEMP\pwsh_profile_cache.ps1"
+$_cacheSelf   = if ($PSCommandPath) { $PSCommandPath } else { $PROFILE }
+$_cacheOk     = $false
+# 수정 시각은 링크가 아니라 링크가 가리키는 실제 파일에서 읽는다 — 프로필을 dotfiles 레포로
+# 심볼릭 링크했거나 도구가 WinGet\Links 같은 링크로 잡혀도, 실제 파일이 바뀌면 감지된다.
+$_mtime = {
+    param([string]$p)
+    $fi = [IO.FileInfo]::new($p)
+    try { $tgt = $fi.ResolveLinkTarget($true); if ($tgt) { $fi = [IO.FileInfo]::new($tgt.FullName) } } catch {}
+    [string]$fi.LastWriteTimeUtc.Ticks
 }
-. $toolsCache
-
-# --- 4. zoxide (cached) ---
-if ($hasZoxide) {
-    $zoxideCache = "$env:TEMP\zoxide_init_cache.ps1"
-    if (-not (Test-Path $zoxideCache)) {
-        zoxide init powershell --cmd z | Out-File $zoxideCache -Encoding UTF8
+if (Test-Path -LiteralPath $profileCache) {
+    try {
+        $_r = [IO.StreamReader]::new($profileCache)
+        try { $_head = $_r.ReadLine() } finally { $_r.Close() }
+        $_fields  = @("$_head".TrimStart('#', ' ') -split "`t")
+        $_cacheOk = ($_fields.Count -ge 2) -and ($_fields[0] -eq 'devsetup-cache 2') -and
+                    ($_fields[1] -eq (& $_mtime $_cacheSelf))
+        for ($_i = 2; $_cacheOk -and $_i -lt $_fields.Count; $_i++) {
+            $_exe, $_ticks = $_fields[$_i] -split '\|', 2
+            $_cacheOk = (Test-Path -LiteralPath $_exe) -and ((& $_mtime $_exe) -eq $_ticks)
+        }
+    } catch { $_cacheOk = $false; $global:DevSetupProfileCacheError = $_ }
+}
+if (-not $_cacheOk) {
+    $_tools  = [ordered]@{ hasZoxide = 'zoxide'; hasFzf = 'fzf'; hasStarship = 'starship'; hasEza = 'eza'; hasFd = 'fd' }
+    $_stamps = @(); $_body = @(); $_zExe = $null
+    foreach ($_k in $_tools.Keys) {
+        $_c = Get-Command $_tools[$_k] -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        $_body += "`$$_k = `$$(([bool]$_c).ToString().ToLower())"
+        if ($_c) {
+            $_stamps += "$($_c.Source)|$(& $_mtime $_c.Source)"
+            if ($_k -eq 'hasZoxide') { $_zExe = $_c.Source }
+        }
     }
-    . $zoxideCache
+    $_text = @((@('# devsetup-cache 2', (& $_mtime $_cacheSelf)) + $_stamps) -join "`t") + $_body
+    if ($_zExe) { $_text += (& $_zExe init powershell --cmd z | Out-String) }
+    # 임시 파일에 다 쓴 뒤 교체한다 — 터미널 여러 개가 동시에 열려도 반쯤 쓰인 캐시를 읽지 않게.
+    $_tmpC = "$profileCache.$PID.tmp"
+    try {
+        Set-Content -LiteralPath $_tmpC -Value $_text -Encoding UTF8
+        Move-Item -LiteralPath $_tmpC -Destination $profileCache -Force
+    } catch {
+        # 시작을 막지 않도록 조용히 넘어가되, 원인은 $DevSetupProfileCacheError 에 남겨 둔다.
+        $global:DevSetupProfileCacheError = $_
+        Remove-Item -LiteralPath $_tmpC -Force -ErrorAction Ignore
+    }
+}
+if (Test-Path -LiteralPath $profileCache) { . $profileCache }
+# -ErrorAction Ignore: SilentlyContinue 는 없는 변수마다 $Error 에 기록을 남긴다.
+Remove-Variable _cacheSelf, _cacheOk, _mtime, _r, _head, _fields, _i, _exe, _ticks, _tools, _stamps, _body, _zExe, _k, _c, _text, _tmpC -ErrorAction Ignore
+
+# --- 4. eza / fd (macOS·Linux 와 같은 별칭) ---
+if ($hasEza) {
+    function ll { eza -l @args }
+    function la { eza -la @args }
+    function lt { eza --tree @args }
+}
+if ($hasFd -and -not $env:FZF_DEFAULT_COMMAND) {
+    # fzf 의 Ctrl+T 파일 검색을 fd 로 (.gitignore 존중, 숨김 파일 포함, .git 제외).
+    # 직접 설정해 둔 FZF_DEFAULT_COMMAND 가 있으면 그대로 둔다.
+    $env:FZF_DEFAULT_COMMAND = 'fd --type f --hidden --follow --exclude .git'
 }
 
 # --- 5. PSReadLine (ConsoleHost only) ---

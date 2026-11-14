@@ -93,6 +93,32 @@ H="$T/linG"; mkdir -p "$H"; printf "alias ll='ls -alF'\nalias la='ls -A'\n" > "$
 run_linux "$H"
 if grep -q 'eza -l' "$H/.bashrc"; then pass "eza 블록 추가(스톡 alias 오탐 해소)"; else fail "eza 블록 미추가"; fi
 
+echo "== [linux] H. 예전 history-substring 블록(/usr/share만 봄) → ~/.zsh 경로로 제자리 갱신 =="
+H="$T/linH"; mkdir -p "$H"; touch "$H/.bashrc"
+cat > "$H/.zshrc" <<'OLD'
+# ── zsh-history-substring-search (↑↓ 부분일치 검색 — 반드시 syntax-highlighting 뒤) ──
+if [ -f /usr/share/zsh-history-substring-search/zsh-history-substring-search.zsh ]; then
+    source /usr/share/zsh-history-substring-search/zsh-history-substring-search.zsh
+fi
+if type history-substring-search-up &>/dev/null; then
+    bindkey '^[[A' history-substring-search-up
+    bindkey '^[[B' history-substring-search-down
+fi
+OLD
+run_linux "$H"
+if grep -qF 'source "$HOME/.zsh/zsh-history-substring-search/zsh-history-substring-search.zsh"' "$H/.zshrc"; then pass "~/.zsh 경로 추가"; else fail "~/.zsh 경로 미추가"; fi
+if [ "$(grep -c '── zsh-history-substring-search' "$H/.zshrc")" = 1 ]; then pass "블록 중복 없음"; else fail "블록 중복"; fi
+if grep -qxF 'elif [ -f /usr/share/zsh-history-substring-search/zsh-history-substring-search.zsh ]; then' "$H/.zshrc"; then pass "/usr/share 경로는 elif로 유지"; else fail "/usr/share 경로 사라짐"; fi
+H1=$(hash_of "$H/.zshrc"); run_linux "$H"
+if [ "$H1" = "$(hash_of "$H/.zshrc")" ]; then pass "갱신 후 재실행 무변경(멱등)"; else fail "갱신 후 재실행 시 변경됨"; fi
+zsh_check "$H/.zshrc" && pass "갱신 후 zsh 문법" || fail "갱신 후 zsh 문법"
+
+echo "== [linux] I. 플러그인 매니저 등 수동 설정은 건드리지 않음 =="
+H="$T/linI"; mkdir -p "$H"; touch "$H/.bashrc"
+printf 'plugins=(git zsh-history-substring-search)\n' > "$H/.zshrc"
+run_linux "$H"
+if grep -qF '.zsh/zsh-history-substring-search/' "$H/.zshrc"; then fail "수동 설정인데 블록 추가됨"; else pass "수동 설정 존중"; fi
+
 echo ""
 echo "== 결과: ${PASSED} passed / ${FAILED} failed =="
 [ "$FAILED" -eq 0 ]

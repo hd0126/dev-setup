@@ -31,7 +31,9 @@ install_apt unzip
 install_apt ripgrep
 install_apt fzf
 install_apt python3
-install_apt python3-pip
+# python3-pip 는 설치하지 않는다: 최근 Ubuntu/Debian 은 시스템 pip 설치를 막아
+# (PEP 668 externally-managed) `pip install` 이 첫 명령부터 에러다. 최신 Python 과
+# 패키지 관리는 uv 가 맡는다 (아래 6c).
 
 # 배포판 버전에 따라 apt에 없을 수 있는 패키지 — 없으면 경고만 하고 계속.
 # apt-cache로 '저장소에 없음'과 '설치 실패'를 구분(락 대기·네트워크 오류를
@@ -51,7 +53,30 @@ install_apt_opt() {
 # 쾌적함 플러스 (전부 시작속도 영향 미미 또는 0)
 install_apt_opt zsh-autosuggestions     # 히스토리 기반 회색 자동제안 (zsh)
 install_apt_opt zsh-syntax-highlighting # 입력 중 명령 유효/오타 색상 (zsh)
-install_apt_opt zsh-history-substring-search # ↑↓ 부분일치 히스토리 검색 (zsh)
+
+# zsh-history-substring-search (↑↓ 부분일치 히스토리 검색): Ubuntu·Debian 어느 버전에도
+# apt 패키지가 없다(packages.ubuntu.com / packages.debian.org 검색 결과 없음). 예전엔
+# install_apt_opt 가 "저장소에 없음"으로 조용히 건너뛰어 Linux 에선 한 번도 동작하지 않았다.
+# 공식 README 의 git clone 방식으로 ~/.zsh 에 받는다. 임시 폴더에 받은 뒤 옮겨서, 실패해도
+# 반쯤 받은 폴더가 남아 다음 실행을 막지 않게 한다.
+HSS_DIR="$HOME/.zsh/zsh-history-substring-search"
+if [ -f "$HSS_DIR/zsh-history-substring-search.zsh" ]; then
+    ok "zsh-history-substring-search (already installed: ~/.zsh)"
+elif [ -e "$HSS_DIR" ]; then
+    warn "zsh-history-substring-search — $HSS_DIR 가 있지만 파일이 없음, 건너뜀 (지우고 재실행하면 다시 받음)"
+elif command -v git &>/dev/null; then
+    info "Installing zsh-history-substring-search (git clone)..."
+    _hss_tmp="$(mktemp -d)"
+    if git clone -q --depth 1 https://github.com/zsh-users/zsh-history-substring-search "$_hss_tmp/hss" \
+        && mkdir -p "$HOME/.zsh" && mv "$_hss_tmp/hss" "$HSS_DIR"; then
+        ok "zsh-history-substring-search → ~/.zsh"
+    else
+        warn "zsh-history-substring-search 다운로드 실패 — 네트워크 확인 후 재실행하면 다시 시도합니다"
+    fi
+    rm -rf "$_hss_tmp"
+else
+    warn "git not found — skipping zsh-history-substring-search"
+fi
 install_apt_opt eza                     # ls 대체 (Ubuntu 24.04+)
 install_apt_opt bat                     # cat 대체 — Ubuntu에선 batcat 명령
 install_apt_opt fd-find                 # find 대체 — Ubuntu에선 fdfind 명령
@@ -135,6 +160,43 @@ else
     ok "uv (already installed)"
 fi
 
+# ── 6c. Python (latest, managed by uv) ────────────────────
+# 시스템 python3(apt)는 그대로 두고 최신 Python 을 uv 로 ~/.local/bin 에 설치한다.
+# 특정 버전 하드코딩 금지 — uv 가 항상 최신 안정판을 고른다.
+# --default 는 버전 명령(python3.x) 외에 python/python3 도 만들어, 새 터미널의
+# 기본 python3 가 uv 관리본이 된다. 이미 Python 환경을 쓰고 있는 사용자의 기본값을
+# 말없이 바꾸면 안 되므로(pip --user 패키지·apt 모듈이 사라진 것처럼 보인다), 아래
+# 둘 중 하나라도 해당하면 --default 없이 버전 명령만 설치한다:
+#   * python3 가 시스템 기본(/usr/bin)이 아닌 곳에서 잡힌다 (pyenv·conda 등)
+#   * pip --user 로 설치한 패키지가 있다 (~/.local/lib/python3*/site-packages)
+# 진행 출력은 숨기지 않는다(다운로드가 멈춘 것처럼 보이지 않도록).
+if command -v uv &>/dev/null; then
+    info "Installing latest Python via uv..."
+    py_cur="$(command -v python3 2>/dev/null || true)"
+    py_default=1
+    # -ef(같은 파일인지)로 비교: PATH 항목 끝의 슬래시 등 표기 차이에 흔들리지 않는다.
+    # ~/.local/bin/python3 는 이전 실행에서 uv 가 만든 것이므로 기존 환경으로 치지 않는다.
+    if [ -n "$py_cur" ] && [ "$py_cur" != /usr/bin/python3 ] && ! [ "$py_cur" -ef "$HOME/.local/bin/python3" ]; then
+        py_default=0
+    fi
+    if ls "$HOME"/.local/lib/python3*/site-packages/* &>/dev/null; then py_default=0; fi
+
+    if [ "$py_default" = 1 ]; then
+        if uv python install --default || { warn "--default 설치 실패 — 버전 명령만 설치로 재시도"; uv python install; }; then
+            ok "Python (uv): $("$HOME/.local/bin/python3" --version 2>/dev/null || echo "installed — run with: uv run python")"
+        else
+            fail "Python (uv python install)"
+        fi
+    elif uv python install; then
+        ok "Python (uv): 최신 버전 설치 — 기존 python3 유지 (${py_cur:-python3})"
+        info "  실행: uv run python · 기본 python3 로 바꾸려면: uv python install --default"
+    else
+        fail "Python (uv python install)"
+    fi
+else
+    warn "uv not found — skipping Python install. Fix uv first, then re-run."
+fi
+
 # ── 7. npm global packages ────────────────────────────────
 install_npm() {
     local pkg="$1"
@@ -158,10 +220,55 @@ install_npm() {
     fi
 }
 
-# Claude Code and codex ship official native installers (standalone binaries
-# with background auto-update) — the vendor-recommended path. Install those
-# natively, independent of npm; gemini-cli / omc / omx stay on npm.
-# Both installers drop binaries in ~/.local/bin, already on PATH (see uv above).
+# Claude Code, codex and Antigravity CLI ship official native installers
+# (standalone binaries with background auto-update) — the vendor-recommended
+# path. Install those natively, independent of npm; omx stays on npm.
+# omc (oh-my-claudecode) is a Claude Code PLUGIN, not an npm install: its README
+# recommends the plugin on every OS. The commands are printed after install
+# (they need a logged-in Claude Code), same as on Windows.
+# All three drop binaries in ~/.local/bin, already on PATH (see uv above).
+# Antigravity CLI (agy) replaces @google/gemini-cli: Google stopped serving
+# Gemini CLI for free/Pro/Ultra accounts on 2026-06-18 (paid API keys only).
+
+# 예전 버전의 이 스크립트가 npm 으로 깔아둔 Gemini CLI 를, 물어본 뒤에만 지운다.
+#   * 기본값 No — 유료 API 키 사용자는 여전히 쓸 수 있다.
+#   * tty 가 없거나(CI·파이프 전용) CI=true 면 묻지 않고 안내만 한다.
+#   * npm 패키지만 지운다. ~/.gemini 는 절대 건드리지 않는다 — Antigravity CLI 가
+#     GEMINI.md·MCP 설정·스킬을 거기서 계속 쓰고, `agy plugin import gemini` 도
+#     예전 확장을 거기서 읽으므로 삭제 후에도 이전할 수 있다.
+#   * 정리 작업일 뿐이라 실패해도 FAILED 목록에 넣지 않는다.
+remove_old_gemini() {
+    command -v npm &>/dev/null || return 0
+    npm ls -g --depth=0 @google/gemini-cli &>/dev/null || return 0
+    local ver ans=""
+    ver=$(npm ls -g --depth=0 @google/gemini-cli 2>/dev/null | grep -oE '@google/gemini-cli@[^ ]+' | head -1) || ver=""
+    echo ""
+    warn "예전 Gemini CLI 발견 (npm${ver:+, ${ver#@google/gemini-cli@}})"
+    echo "  2026-06-18부터 무료/Pro/Ultra 계정은 사용 불가(유료 API 키만 가능). Antigravity CLI(agy)가 대체합니다."
+    echo "  ~/.gemini 의 설정은 어느 쪽이든 그대로 둡니다."
+    if [ "${CI:-}" = "true" ]; then
+        echo "  제거하려면: npm uninstall -g @google/gemini-cli"
+        return 0
+    fi
+    printf "  예전 Gemini CLI 를 삭제할까요? 유료 API 키로 계속 쓰신다면 N [y/N] "
+    # 중괄호로 감싸야 /dev/tty 를 열지 못할 때의 셸 오류 문구까지 숨겨진다
+    # (`read </dev/tty 2>/dev/null` 은 열기 실패 메시지를 막지 못한다).
+    { read -r ans </dev/tty; } 2>/dev/null || { ans=""; echo ""; }
+    case "$ans" in
+        y|Y|yes|YES)
+            if npm uninstall -g @google/gemini-cli; then
+                ok "Gemini CLI 삭제 (~/.gemini 유지)"
+                if [ -x "$HOME/.local/bin/agy" ]; then
+                    echo "  쓰던 Gemini 확장은 이렇게 옮길 수 있습니다: agy plugin import gemini"
+                fi
+            else
+                warn "Gemini CLI 삭제 실패 — 직접 실행: npm uninstall -g @google/gemini-cli (권한 오류면 앞에 sudo)"
+            fi ;;
+        *)
+            echo "  유지합니다. 나중에 지우려면: npm uninstall -g @google/gemini-cli" ;;
+    esac
+}
+
 install_native() {
     local name="$1" url="$2" sh="${3:-bash}" cmd="$4"
     # Native builds self-update in the background, so an existing install is
@@ -183,14 +290,21 @@ install_native() {
 
 install_native "Claude Code"    "https://claude.ai/install.sh"         bash claude
 install_native "codex (OpenAI)" "https://chatgpt.com/codex/install.sh" sh   codex
+install_native "Antigravity CLI (Google)" "https://antigravity.google/cli/install.sh" bash agy
 
 if command -v npm &>/dev/null; then
-    install_npm "@google/gemini-cli"
-    install_npm "oh-my-claude-sisyphus"
     install_npm "oh-my-codex"
+    # 예전 버전이 npm 으로 깐 omc(oh-my-claude-sisyphus)는 지우지 않는다 — 공식 문서가
+    # 여전히 대안으로 소개하는 정상 설치다. 다만 이제 스크립트가 업데이트하지 않으므로 알려준다.
+    if npm ls -g --depth=0 oh-my-claude-sisyphus &>/dev/null; then
+        info "npm판 omc(oh-my-claude-sisyphus)가 있습니다 — 이제 이 스크립트는 업데이트하지 않습니다."
+        info "  권장: 아래 안내대로 Claude Code 플러그인으로 설치. npm판을 계속 쓰려면: npm i -g oh-my-claude-sisyphus@latest"
+    fi
 else
-    warn "npm not found — skipping gemini-cli/omc/omx. Install Node.js first, then re-run."
+    warn "npm not found — skipping omx. Install Node.js first, then re-run."
 fi
+
+remove_old_gemini
 
 # ── 7b. git-delta를 git pager로 (기존 설정 있으면 건드리지 않음) ──
 if command -v delta &>/dev/null; then
@@ -370,7 +484,9 @@ EOF
         # history-substring-search는 syntax-highlighting보다도 뒤여야 함 (플러그인 공식 권장 순서)
         IFS= read -r -d '' BLOCK <<'EOF' || true
 # ── zsh-history-substring-search (↑↓ 부분일치 검색 — 반드시 syntax-highlighting 뒤) ──
-if [ -f /usr/share/zsh-history-substring-search/zsh-history-substring-search.zsh ]; then
+if [ -f "$HOME/.zsh/zsh-history-substring-search/zsh-history-substring-search.zsh" ]; then
+    source "$HOME/.zsh/zsh-history-substring-search/zsh-history-substring-search.zsh"
+elif [ -f /usr/share/zsh-history-substring-search/zsh-history-substring-search.zsh ]; then
     source /usr/share/zsh-history-substring-search/zsh-history-substring-search.zsh
 fi
 if type history-substring-search-up &>/dev/null; then
@@ -378,6 +494,25 @@ if type history-substring-search-up &>/dev/null; then
     bindkey '^[[B' history-substring-search-down
 fi
 EOF
+        # 예전 버전이 넣은 블록은 존재하지 않는 /usr/share 경로만 봐서 아무것도 로드하지 않는다.
+        # 그 블록이 있으면(시그니처가 맞아 새 블록은 추가되지 않으므로) 그 줄만 제자리에서
+        # 고쳐 ~/.zsh 경로를 먼저 보게 한다. 우리 스크립트가 쓴 정확한 줄만 바꾸고, 이미
+        # 고쳐졌으면 건드리지 않는다(멱등).
+        _hss_old='if [ -f /usr/share/zsh-history-substring-search/zsh-history-substring-search.zsh ]; then'
+        if grep -qxF "$_hss_old" "$cfg" 2>/dev/null && ! grep -qF '.zsh/zsh-history-substring-search/' "$cfg" 2>/dev/null; then
+            _hss_tmpf="$(mktemp)"
+            awk -v old="$_hss_old" '
+                $0 == old && !done {
+                    print "if [ -f \"$HOME/.zsh/zsh-history-substring-search/zsh-history-substring-search.zsh\" ]; then"
+                    print "    source \"$HOME/.zsh/zsh-history-substring-search/zsh-history-substring-search.zsh\""
+                    print "elif [ -f /usr/share/zsh-history-substring-search/zsh-history-substring-search.zsh ]; then"
+                    done = 1; next
+                }
+                { print }
+            ' "$cfg" > "$_hss_tmpf" && cat "$_hss_tmpf" > "$cfg"
+            rm -f "$_hss_tmpf"
+            ok "zsh-history-substring-search 블록 갱신 → $cfg (~/.zsh 경로 추가)"
+        fi
         append_cfg "$cfg" 'history-substring-search' "zsh-history-substring-search" "$BLOCK" tail
         if [ "$hand_configured" = 0 ]; then
             IFS= read -r -d '' BLOCK <<'EOF' || true
@@ -526,6 +661,20 @@ for cfg in "${SHELL_CONFIGS[@]}"; do
         ok "SSH agent config → $cfg"
     fi
 done
+
+# ── Claude Code plugins (manual, after login) ─────────────
+# omc 를 포함한 플러그인은 로그인된 Claude Code 가 필요해 자동 실행하지 않는다 (Windows 와 동일).
+echo ""
+echo -e "${YELLOW}-- Claude Code plugins (run after login) --${NC}"
+echo "  claude auth login"
+echo "  claude plugin marketplace add Yeachan-Heo/oh-my-claudecode"
+echo "  claude plugin install oh-my-claudecode@omc"
+echo "  claude plugin marketplace add openai/codex-plugin-cc"
+echo "  claude plugin install codex@openai-codex"
+echo "  claude plugin marketplace add https://github.com/orientpine/honeypot.git"
+echo "  claude plugin marketplace add forrestchang/andrej-karpathy-skills"
+echo "  claude plugin install andrej-karpathy-skills@karpathy-skills"
+echo -e "${YELLOW}-------------------------------------------${NC}"
 
 # ── Report a problem (terminal-friendly) ─────────────────
 # 1) Pre-filled GitHub issue URL (OS + failed items already filled in).
