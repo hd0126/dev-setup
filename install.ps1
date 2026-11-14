@@ -22,7 +22,7 @@ try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAc
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
 
 # 한글/공백 계정명이면 $env:TEMP 가 8.3 짧은 이름(C:\Users\곽대운~1\...)이 되는데,
-# Remove-Item 은 이 경로의 "존재하는" 항목을 지우지 못하고 -ErrorAction 도 무시한 채
+# Remove-Item 은 이 경로의 "존재하는" 항목을 지우지 못하고, -ErrorAction 도 무시한 채 (아래 에러)
 # "지정한 경로 ...~1에 개체가 없습니다" 를 낸다(-LiteralPath 도 동일, PS 5.1·7 공통).
 # Get-Item 으로 긴 경로를 얻은 뒤 지운다. 없는 경로는 조용히 건너뛴다.
 function Remove-TempPath {
@@ -748,8 +748,8 @@ if ($selectedNpm) {
             # 실패했을 때 멀쩡한 Codex 설치 폴더를 지우게 된다. codex 여부를 명시적으로 판별한다.
             $isCodex = ($nativeCmd -eq 'codex')
 
-            # 이미 네이티브로 설치돼 있으면 대용량 재다운로드 skip — 네이티브 빌드는
-            # 백그라운드 자동 업데이트가 있어 기존 설치로 충분 (mac/linux와 동일 동작)
+            # 이미 네이티브로 설치돼 있으면 대용량 재다운로드를 건너뛴다 (mac/linux와 동일).
+            # 네이티브 빌드는 백그라운드 자동 업데이트가 있어 기존 설치로 충분하다.
             # A leftover npm copy is removed on BOTH paths: before this, the cleanup only ran
             # on a fresh native install, so a PC that already had the native build kept its
             # npm copy forever (and it could shadow the native one, see Remove-NpmDuplicate).
@@ -789,8 +789,8 @@ if ($selectedNpm) {
 
             try {
                 Invoke-RestMethod $pkg.Installer -OutFile $tmp
-                # 출력을 캡처(=리다이렉트)하면 프롬프트도 자동 우회되고, 실패 시 실제
-                # 원인(tar/symlink/네트워크)을 로그로 남겨 이슈 리포트에 담을 수 있다.
+                # 출력을 캡처(=리다이렉트)하면 프롬프트도 자동 우회되고, 실패 시 실제 원인
+                # (tar/symlink/네트워크)을 로그로 남겨 이슈 리포트에 담을 수 있다.
                 $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $tmp 2>&1 | Out-String
                 $out | Out-File -FilePath $nativeLog -Encoding utf8
                 if ($out.Trim()) { Write-Host $out.TrimEnd() -ForegroundColor DarkGray }
@@ -806,8 +806,8 @@ if ($selectedNpm) {
                     if ($out2.Trim()) { Write-Host $out2.TrimEnd() -ForegroundColor DarkGray }
                 }
 
-                # 성공 판정은 exit code 가 아니라 실제 바이너리 존재로 한다 — 네이티브
-                # 설치기가 성공해도 비정상 종료 코드를 남기는 경우가 있어 오탐을 막는다.
+                # 성공 판정은 exit code 가 아니라 실제 바이너리 존재로 한다 (네이티브 설치기가
+                # 성공해도 비정상 종료 코드를 남기는 경우가 있어 오탐을 막는다).
                 if (Test-Path $nativeBin) {
                     Write-Host "  -> $($pkg.Name) [OK - native installer]" -ForegroundColor Green
                     # Claude Code's Windows native installer drops claude.exe in
@@ -994,7 +994,7 @@ if (-not $DryRun) {
     }
     Invoke-WebRequest -Uri $gistUrl -OutFile $pwshProfilePath -UseBasicParsing
 
-    # 방금 설치된 도구(zoxide/fzf/starship)가 프로필의 도구 캐시에 반영되도록
+    # 방금 설치된 도구(zoxide/fzf/starship)가 프로필의 도구 캐시에 반영되도록 (아래)
     # 캐시를 무효화한다 — 안 하면 이전 캐시(도구 없음)가 남아 zoxide/fzf가
     # 새 터미널에서도 계속 비활성 상태로 보인다.
     # pwsh_profile_cache.ps1 is the current single cache; the other two are the older

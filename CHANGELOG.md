@@ -72,6 +72,17 @@
   symlink 우회·standalone 정리 재시도를 "Claude Code가 아니면"이 아니라 codex 여부로
   판별하도록 변경(다른 도구 설치 실패 시 Codex 설치 폴더를 지우지 않도록).
 
+### Added
+- **실제 설치 E2E 워크플로** (`.github/workflows/e2e-install.yml`) — 설치 스크립트가 바뀐
+  PR(또는 수동 실행)에서 GitHub의 일회용 러너 3종(ubuntu·macos·windows)에 **실제로 설치**한
+  뒤, 새 터미널이 받을 PATH 기준으로 claude·codex·agy·uv 등이 실행되는지와 Gemini CLI가 설치되지
+  않았는지 확인한다. 입력 없이 돌려 y/N 질문이 멈추지 않는지도 함께 검증한다. 호스트 Windows
+  러너에는 winget이 없어 Microsoft 공식 모듈(`Microsoft.WinGet.Client`)로 먼저 설치한다.
+- **CI: Windows PowerShell 5.1 줄 삼킴 검사** — BOM 없는 `install.ps1`을 5.1이 `-File`로 읽으면
+  시스템 코드페이지로 해석해, 한글 등으로 끝나는 줄이 다음 줄을 주석으로 삼켜 코드가 조용히 실행되지
+  않을 수 있다. CP949·932·936·950·1252에서 그런 줄이 하나라도 있으면 CI가 실패한다. 기존에
+  해당하던 주석 5줄(CP949 3줄, CP932 2줄)은 ASCII 문자로 끝나도록 고쳤다.
+
 ### Fixed
 - **네이티브 claude·codex가 이미 있으면 npm 사본이 영영 남던 문제** — npm 사본 제거가
   네이티브를 새로 설치할 때만 실행돼, 네이티브가 이미 있는 PC에서는 "already installed"로

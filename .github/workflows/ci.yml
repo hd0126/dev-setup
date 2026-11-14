@@ -22,6 +22,28 @@ jobs:
             else { Write-Host "OK  $($_.Name)" }
           }
           exit $bad
+      - name: Windows PowerShell 5.1 line-swallow check (BOM-less UTF-8)
+        shell: pwsh
+        run: |
+          # install.ps1 is UTF-8 WITHOUT a BOM (a BOM breaks `irm | iex`). Windows PowerShell
+          # 5.1 then reads `-File` runs in the system ANSI code page, where the last UTF-8
+          # byte of a line ending in e.g. Hangul can pair with the newline: the NEXT line
+          # silently becomes part of the comment and never runs. Fail on any such line in
+          # the common East Asian / Western code pages.
+          [Text.Encoding]::RegisterProvider([Text.CodePagesEncodingProvider]::Instance)
+          $lines = ([IO.File]::ReadAllText("$PWD/install.ps1", [Text.Encoding]::UTF8) -replace "`r`n", "`n") -split "`n"
+          $bad = 0
+          foreach ($cpn in 949, 932, 936, 950, 1252) {
+            $cp = [Text.Encoding]::GetEncoding($cpn)
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+              if (-not $cp.GetString([Text.Encoding]::UTF8.GetBytes($lines[$i] + "`n")).EndsWith("`n")) {
+                Write-Host "::error file=install.ps1,line=$($i + 1)::CP$cpn swallows the newline after this line - end it with an ASCII character"
+                $bad++
+              }
+            }
+          }
+          if ($bad) { exit 1 }
+          Write-Host "line-swallow check OK (CP949/932/936/950/1252)"
       - name: PSScriptAnalyzer (errors only)
         shell: pwsh
         run: |
