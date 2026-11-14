@@ -125,16 +125,21 @@ jobs:
       # It runs in a SEPARATE powershell.exe, not in the step host: GitHub's `powershell`
       # step wrapper sets $ErrorActionPreference = 'Stop', which turns any native stderr
       # line (e.g. `tldr --list` on an empty cache) into a terminating error. A user's
-      # console uses 'Continue'. The tiny wrapper sits in the checkout so the script sees
-      # the local profile next to it (as a clone run does) instead of main's.
+      # console uses 'Continue'. Inside Invoke-Expression the script has no path, exactly
+      # like a real `irm | iex`: it returns instead of exiting and installs main's
+      # profile. So the wrapper turns the script's own $failedPkgs into the exit code.
       - name: Run install.ps1 like the README one-liner (Windows PowerShell 5.1, irm | iex)
         if: matrix.shell == 'powershell'
         shell: powershell
         env:
           DEVSETUP_NONINTERACTIVE: "1"
         run: |
-          $wrapper = Join-Path $PWD 'e2e-oneliner.ps1'
-          Set-Content -Path $wrapper -Encoding ASCII -Value 'Invoke-Expression ([IO.File]::ReadAllText((Join-Path $PSScriptRoot "install.ps1"), [Text.Encoding]::UTF8))'
+          $wrapper = Join-Path $env:RUNNER_TEMP 'e2e-oneliner.ps1'
+          $src = (Join-Path $PWD 'install.ps1') -replace "'", "''"
+          Set-Content -Path $wrapper -Encoding ASCII -Value @(
+            "Invoke-Expression ([IO.File]::ReadAllText('$src', [Text.Encoding]::UTF8))"
+            'if ($failedPkgs.Count -gt 0) { Write-Host ("FAILED: " + ($failedPkgs -join "; ")); exit 1 }'
+          )
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File $wrapper
           $code = $LASTEXITCODE
           if ($code -ne 0) { Write-Host "::error::install.ps1 exited $code"; exit 1 }
@@ -150,7 +155,10 @@ jobs:
           if ($code -ne 0) { Write-Host "::error::install.ps1 exited $code"; exit 1 }
 
       - name: Verify the tools a new terminal would find
-        shell: pwsh
+        # -NoProfile for the step host itself: otherwise it loads the freshly installed
+        # profile with the runner's OLD PATH and writes a "no tools" cache before the
+        # checks below even start (a new user terminal gets the updated PATH instead).
+        shell: pwsh -NoProfile -command ". '{0}'"
         run: |
           # Exactly the PATH a newly opened terminal gets: machine + user, from the registry.
           $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -168,17 +176,30 @@ jobs:
           if (Get-Command gemini -ErrorAction SilentlyContinue) { Write-Host "UNEXPECTED gemini is installed"; $fail++ }
           $prof = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'PowerShell\Microsoft.PowerShell_profile.ps1'
           if (Test-Path $prof) { Write-Host "OK       profile at $prof" } else { Write-Host "MISSING  profile"; $fail++ }
-          # The profile must load cleanly in a new pwsh and build its single cache.
-          $out = pwsh -NoLogo -Command "exit" 2>&1 | Out-String
+          # The installed profile must load in a new pwsh and see the installed tools.
+          $probe = 'Write-Host ("PROFILE-FLAGS zoxide={0} fzf={1} eza={2} fd={3} z={4} ll={5}" -f $hasZoxide, $hasFzf, $hasEza, $hasFd, [bool](Get-Command z -ErrorAction Ignore), [bool](Get-Command ll -ErrorAction Ignore))'
+          $out = pwsh -NoLogo -Command $probe 2>&1 | Out-String
           Write-Host $out
-          if ($out -match 'Exception|error' -and $out -notmatch 'PowerShell loaded') { $fail++ }
-          $cache = [IO.Path]::GetFullPath("$env:TEMP\pwsh_profile_cache.ps1")
-          if (Test-Path $cache) {
-            Write-Host "OK       profile cache  ($((Get-Content $cache -TotalCount 1).Substring(0, 40))...)"
+          if ($out -notmatch 'PowerShell loaded') { Write-Host "PROFILE did not finish loading"; $fail++ }
+          if ($out -notmatch 'PROFILE-FLAGS zoxide=True fzf=True') { Write-Host "PROFILE does not see zoxide/fzf"; $fail++ }
+
+          # Single-file cache: only this branch's profile has it. The pwsh run executes
+          # install.ps1 as a file from the checkout and installs the local profile; the
+          # 5.1 one-liner run (no script path) installs main's, like a real `irm | iex`.
+          $repoProf = Join-Path $env:GITHUB_WORKSPACE 'Microsoft.PowerShell_profile.ps1'
+          $sameAsBranch = ((Get-FileHash $prof).Hash -eq (Get-FileHash $repoProf).Hash)
+          if (-not $sameAsBranch) {
+            Write-Host "--       profile is main's (one-liner path) - branch cache format not checked"
           } else {
-            Write-Host "MISSING  profile cache at $cache"
-            # Diagnostics: what the profile caught while building the cache, and what is in TEMP.
-            pwsh -NoLogo -Command '"TEMP=$env:TEMP"; if ($global:DevSetupProfileCacheError) { "cache error: " + $global:DevSetupProfileCacheError.Exception.GetType().FullName + ": " + $global:DevSetupProfileCacheError.Exception.Message } else { "no cache error recorded" }; Get-ChildItem $env:TEMP -Filter "pwsh_profile_cache*" | ForEach-Object Name'
-            $fail++
+            if ($out -notmatch 'eza=True fd=True z=True ll=True') { Write-Host "PROFILE flags incomplete for this branch"; $fail++ }
+            $cache = [IO.Path]::GetFullPath("$env:TEMP\pwsh_profile_cache.ps1")
+            if (Test-Path $cache) {
+              $head = "$(Get-Content $cache -TotalCount 1)"
+              Write-Host ("OK       profile cache, {0} tool stamp(s)" -f (($head -split "`t").Count - 2))
+            } else {
+              Write-Host "MISSING  profile cache at $cache"
+              pwsh -NoLogo -Command 'if ($global:DevSetupProfileCacheError) { "cache error: " + $global:DevSetupProfileCacheError.Exception.Message } else { "no cache error recorded" }'
+              $fail++
+            }
           }
           exit $fail
