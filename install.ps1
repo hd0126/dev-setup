@@ -101,6 +101,48 @@ function Add-UserPath {
     return $changed
 }
 
+# Remove an npm-installed copy of a tool that now has a native install (claude, codex).
+# Which copy runs depends on PATH order, and that order differs between contexts: for
+# Claude Code this script appends ~\.local\bin to the END of the user PATH (unless the uv
+# step later moves it to the front), so on a PC where Node's %APPDATA%\npm came first, a
+# leftover npm copy wins in new terminals. Detected with `npm ls`, not Get-Command,
+# because the first hit depends on the current PATH.
+# Same tool, same vendor, so no prompt. Call it only AFTER the native binary exists, and
+# it refuses unless the native folder is on the persistent (user or machine) PATH -
+# otherwise removing the npm copy would leave no `claude`/`codex` in new terminals.
+# Returns $true when it printed something, so the caller can fix its progress line.
+function Remove-NpmDuplicate {
+    param([string]$NpmName, [string]$Cmd, [string]$NativeDir)
+    if (-not $NpmName) { return $false }
+    $npm = Get-Command npm.cmd -CommandType Application -ErrorAction SilentlyContinue
+    if (-not $npm) { return $false }
+    $ls  = & $npm.Source ls -g $NpmName --depth=0 --json 2>$null | Out-String
+    $has = $false
+    try {
+        $deps = ($ls | ConvertFrom-Json).dependencies
+        $has  = [bool]($deps -and $deps.PSObject.Properties[$NpmName])
+    } catch {}
+    if (-not $has) { return $false }
+    $want   = [Environment]::ExpandEnvironmentVariables($NativeDir).TrimEnd('\')
+    $onPath = $false
+    foreach ($scope in 'User', 'Machine') {
+        foreach ($p in @([Environment]::GetEnvironmentVariable('Path', $scope) -split ';')) {
+            if ($p -and ([Environment]::ExpandEnvironmentVariables($p).TrimEnd('\') -ieq $want)) { $onPath = $true }
+        }
+    }
+    if (-not $onPath) {
+        Write-Host ""
+        Write-Host "  kept the npm copy of ${Cmd} - the native folder ($NativeDir) is not on your PATH yet." -ForegroundColor Yellow
+        return $true
+    }
+    Write-Host ""
+    Write-Host "  removing duplicate npm copy of $Cmd ($NpmName) - the native install replaces it..." -ForegroundColor Yellow -NoNewline
+    $null = & $npm.Source uninstall -g $NpmName 2>&1 | Out-String
+    if ($LASTEXITCODE -eq 0) { Write-Host " done" -ForegroundColor Green }
+    else { Write-Host " failed (npm exit $LASTEXITCODE). Remove it later:  npm uninstall -g $NpmName" -ForegroundColor Yellow }
+    return $true
+}
+
 # ── Non-interactive / dry-run (unattended installs and CI) ──────────────────
 # Set these env vars BEFORE running (works with the irm | iex one-liner too):
 #   $env:DEVSETUP_NONINTERACTIVE=1  -> skip the selection menu, install the defaults
@@ -181,6 +223,49 @@ $packages = @(
         Desc = "Faster grep. Auto applies .gitignore."
         Ex   = "rg 'function' src/"
         On   = $true
+    },
+    # "Comfort plus" tools, same set as macOS/Linux. Optional = a failed install is
+    # reported as skipped, never as a failure of the whole run. IDs are the ones the
+    # projects themselves publish (checked with `winget show --id <id> --exact`).
+    @{
+        Id       = "eza-community.eza"
+        Name     = "eza"
+        Desc     = "Modern ls. The profile adds ll / la / lt."
+        Ex       = "ll  /  la  /  lt (tree)"
+        On       = $true
+        Optional = $true
+    },
+    @{
+        Id       = "sharkdp.bat"
+        Name     = "bat"
+        Desc     = "cat with syntax highlighting. Run it as 'bat' (PowerShell's own cat is left alone)."
+        Ex       = "bat README.md"
+        On       = $true
+        Optional = $true
+    },
+    @{
+        Id       = "sharkdp.fd"
+        Name     = "fd"
+        Desc     = "Fast find that respects .gitignore. Also speeds up fzf's Ctrl+T file search."
+        Ex       = "fd .ps1"
+        On       = $true
+        Optional = $true
+    },
+    @{
+        Id       = "dandavison.delta"
+        Name     = "delta"
+        Desc     = "Readable git diff. Set as git's pager unless you already have one."
+        Ex       = "git diff"
+        On       = $true
+        Optional = $true
+    },
+    @{
+        Id       = "dbrgn.tealdeer"
+        Name     = "tldr (tealdeer)"
+        Desc     = "Short, example-first command help."
+        Ex       = "tldr tar"
+        On       = $true
+        Optional = $true
     },
     # Python 은 winget 으로 특정 버전을 고정 설치하지 않는다. 고정값은 금방 낡는다.
     # (3.12 고정이 3.15 시대까지 남아 있었다.) uv 가 최신 Python 을 직접 받아 관리한다.
@@ -365,15 +450,46 @@ $wingetIdx    = 0
 $failedPkgs   = @()
 $optionalFails = @()
 
+# One winget scan instead of one `winget list` per package. Each `winget list --id`
+# rescans everything installed (measured ~14 s per call on a PC with real-time
+# antivirus); `winget export` scans once (~57 s there for 104 packages, vs ~139 s for
+# 10 separate lists) and writes JSON, so the result does not depend on the UI language
+# or on column truncation. Any failure falls back to the old per-package check.
+$installedIds = $null   # PackageIdentifier -> source name ('winget' / 'msstore'); $null = unknown
+if (-not $DryRun -and $wingetList.Count -gt 0) {
+    Write-Host "Checking what is already installed (one winget scan, can take a minute)..." -ForegroundColor DarkGray
+    $expFile = Join-Path $env:TEMP "devsetup-winget-export-$PID.json"
+    try {
+        winget export -o $expFile --accept-source-agreements 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $expFile)) {
+            $exp = Get-Content $expFile -Raw -Encoding UTF8 | ConvertFrom-Json
+            $scan = @{}
+            foreach ($src in @($exp.Sources)) {
+                foreach ($p in @($src.Packages)) { $scan[[string]$p.PackageIdentifier] = [string]$src.SourceDetails.Name }
+            }
+            $installedIds = $scan
+        }
+    } catch {
+        $installedIds = $null
+    } finally {
+        Remove-TempPath $expFile
+    }
+}
+
 foreach ($pkg in $wingetList) {
     $wingetIdx++
     Write-Host "[$wingetIdx/$wingetTotal] $($pkg.Name)..." -ForegroundColor Cyan -NoNewline
     if ($DryRun) { Write-Host " [DRY-RUN] would install/upgrade ($($pkg.Id))" -ForegroundColor DarkGray; continue }
 
     # Check if already installed, and from which source
-    $listOut = winget list --id $pkg.Id --exact --accept-source-agreements 2>&1 | Out-String
-    $alreadyInstalled = ($LASTEXITCODE -eq 0)
-    $isStoreManaged   = $alreadyInstalled -and ($listOut -match 'msstore|Microsoft Store')
+    if ($null -ne $installedIds) {
+        $alreadyInstalled = $installedIds.ContainsKey($pkg.Id)
+        $isStoreManaged   = $alreadyInstalled -and ($installedIds[$pkg.Id] -eq 'msstore')
+    } else {
+        $listOut = winget list --id $pkg.Id --exact --accept-source-agreements 2>&1 | Out-String
+        $alreadyInstalled = ($LASTEXITCODE -eq 0)
+        $isStoreManaged   = $alreadyInstalled -and ($listOut -match 'msstore|Microsoft Store')
+    }
 
     if ($isStoreManaged) {
         Write-Host " [SKIP] Microsoft Store version detected - uninstall it first to use winget version" -ForegroundColor Yellow
@@ -430,6 +546,43 @@ foreach ($pkg in $wingetList) {
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
             [System.Environment]::GetEnvironmentVariable("Path", "User") + ";" +
             "$env:APPDATA\npm"
+
+# ── delta as git pager / tldr page cache (same as macOS/Linux) ──
+# delta: only when no pager is configured at ANY level (system/global/local config, or
+#   GIT_PAGER / PAGER) - an existing choice is the user's. diffFilter likewise only if unset.
+# tldr: tealdeer ships without pages; fetch them when `tldr --list` has nothing yet, so
+#   a failed first download is retried on the next run.
+# -CommandType Application: never pick up a user's function/alias named git/delta/tldr.
+if (-not $DryRun) {
+    $deltaPkg = $packages | Where-Object { $_.Id -eq 'dandavison.delta' }
+    $gitCmd   = Get-Command git   -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    $deltaCmd = Get-Command delta -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($deltaPkg -and $deltaPkg.On -and $gitCmd -and $deltaCmd) {
+        $curPager = (& $gitCmd.Source config core.pager 2>$null | Out-String).Trim()
+        if (-not $curPager) { $curPager = "$env:GIT_PAGER".Trim() }
+        if (-not $curPager) { $curPager = "$env:PAGER".Trim() }
+        if ($curPager -eq 'delta') {
+            Write-Host "git pager: delta (already set)" -ForegroundColor DarkGray
+        } elseif ($curPager) {
+            Write-Host "git pager: kept your existing setting ($curPager)" -ForegroundColor DarkGray
+        } else {
+            & $gitCmd.Source config --global core.pager delta
+            $curFilter = (& $gitCmd.Source config interactive.diffFilter 2>$null | Out-String).Trim()
+            if (-not $curFilter) { & $gitCmd.Source config --global interactive.diffFilter "delta --color-only" }
+            Write-Host "git pager: delta (highlighted git diff)" -ForegroundColor DarkGray
+        }
+    }
+    $tldrPkg = $packages | Where-Object { $_.Id -eq 'dbrgn.tealdeer' }
+    $tldrCmd = Get-Command tldr -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($tldrPkg -and $tldrPkg.On -and $tldrCmd) {
+        $tldrPages = (& $tldrCmd.Source --list 2>$null | Select-Object -First 1)
+        if (-not $tldrPages) {
+            & $tldrCmd.Source --update 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) { Write-Host "tldr: page cache downloaded" -ForegroundColor DarkGray }
+            else { Write-Host "tldr: page download failed - it is retried on the next run (or run 'tldr --update')" -ForegroundColor DarkGray }
+        }
+    }
+}
 
 # ── zoxide fallback: standalone binary if winget failed ───
 # winget can crash (0xC0000005) or be denied (exit 5) on locked-down PCs and
@@ -597,19 +750,20 @@ if ($selectedNpm) {
 
             # 이미 네이티브로 설치돼 있으면 대용량 재다운로드 skip — 네이티브 빌드는
             # 백그라운드 자동 업데이트가 있어 기존 설치로 충분 (mac/linux와 동일 동작)
+            # A leftover npm copy is removed on BOTH paths: before this, the cleanup only ran
+            # on a fresh native install, so a PC that already had the native build kept its
+            # npm copy forever (and it could shadow the native one, see Remove-NpmDuplicate).
             if (Test-Path $nativeBin) {
-                Write-Host " [OK - already installed (native, self-updating)]" -ForegroundColor Green
+                $nativeDir = Split-Path $nativeBin
+                # Claude's native installer never adds ~\.local\bin to PATH (codex's and
+                # agy's do). Make sure it is there before the npm copy can be removed.
+                if (-not $isCodex) { $null = Add-UserPath $nativeDir }
+                if (Remove-NpmDuplicate $npmName $nativeCmd $nativeDir) {
+                    Write-Host "  -> $($pkg.Name) [OK - native install kept (self-updating)]" -ForegroundColor Green
+                } else {
+                    Write-Host " [OK - already installed (native, self-updating)]" -ForegroundColor Green
+                }
                 continue
-            }
-
-            # 비-native(npm/bun) 설치본이 있으면 먼저 제거하고 native 로 교체한다.
-            # 안 지우면 PATH 순서로 어느 쪽 codex/claude 가 실행될지 애매해진다.
-            $existingCmd = Get-Command $nativeCmd -ErrorAction SilentlyContinue
-            if ($npmName -and $existingCmd -and ($existingCmd.Source -match 'node_modules|\\npm\\|\.bun\\')) {
-                Write-Host ""
-                Write-Host "  removing non-native $nativeCmd at $($existingCmd.Source) ..." -ForegroundColor Yellow
-                $npmRm = Get-Command npm.cmd -ErrorAction SilentlyContinue
-                if ($npmRm) { & $npmRm.Source uninstall -g $npmName 2>&1 | Out-Null }
             }
 
             Write-Host ""
@@ -662,12 +816,15 @@ if ($selectedNpm) {
                     # `claude` command resolves after install / in a new terminal.
                     # Antigravity's installer hands PATH setup to `agy install`; the same
                     # idempotent call is a safety net in case that step was skipped.
+                    $nativeDir = Split-Path $nativeBin
                     if (-not $isCodex) {
-                        $nativeDir = Split-Path $nativeBin
                         if (Add-UserPath $nativeDir) {
                             Write-Host "     added $nativeDir to your PATH" -ForegroundColor DarkGray
                         }
                     }
+                    # Only now that the native build is in place: if the native install had
+                    # failed, removing the npm copy first would leave the user with neither.
+                    $null = Remove-NpmDuplicate $npmName $nativeCmd $nativeDir
                 } else {
                     Write-Host "  -> $($pkg.Name) [FAILED] native installer (log: $nativeLog)" -ForegroundColor Red
                     $failedPkgs += "$($pkg.Name) (native installer)"
@@ -840,7 +997,9 @@ if (-not $DryRun) {
     # 방금 설치된 도구(zoxide/fzf/starship)가 프로필의 도구 캐시에 반영되도록
     # 캐시를 무효화한다 — 안 하면 이전 캐시(도구 없음)가 남아 zoxide/fzf가
     # 새 터미널에서도 계속 비활성 상태로 보인다.
-    Remove-TempPath "$env:TEMP\pwsh_tools_cache.ps1", "$env:TEMP\zoxide_init_cache.ps1"
+    # pwsh_profile_cache.ps1 is the current single cache; the other two are the older
+    # two-file layout, removed so they do not linger.
+    Remove-TempPath "$env:TEMP\pwsh_profile_cache.ps1", "$env:TEMP\pwsh_tools_cache.ps1", "$env:TEMP\zoxide_init_cache.ps1"
     Write-Host "  Tool cache invalidated (fresh detection on next shell)." -ForegroundColor DarkGray
 } else {
     Write-Host "[DRY-RUN] would download the PowerShell profile to `$PROFILE." -ForegroundColor DarkGray

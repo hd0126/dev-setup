@@ -50,11 +50,37 @@
   Mono에는 있음). Node.js는 Claude Code 본체엔 필요 없지만 omc 플러그인의 훅 25개와
   MCP 서버가 `node`로 실행된다. 이 PR 초안의 "Node는 omx에만 필요" 설명을 바로잡고,
   Windows에서 Node를 해제했는데 PC에도 없으면 경고를 출력한다(강제로 다시 켜지는 않음).
+- **Windows에 eza·bat·fd·delta·tldr 추가 (macOS·Linux와 같은 구성)** — winget 공식 ID
+  (`eza-community.eza`, `sharkdp.bat`, `sharkdp.fd`, `dandavison.delta`, `dbrgn.tealdeer`)로
+  설치하고, 실패해도 전체 실패로 세지 않는 선택 항목으로 둔다. 프로필에 `ll`·`la`·`lt`(eza),
+  fd 기반 fzf `Ctrl+T`(직접 설정한 `FZF_DEFAULT_COMMAND`가 있으면 유지)를 추가한다. git pager는
+  어느 수준(시스템·전역·로컬 설정, `GIT_PAGER`·`PAGER`)에도 설정이 없을 때만 delta로 바꾸고,
+  tldr 페이지가 비어 있으면 받는다(실패하면 다음 실행 때 다시 시도). PowerShell의 `cat`(Get-Content)은 객체 파이프라인 동작이 달라
+  bat으로 덮어쓰지 않는다.
+- **winget 설치 여부를 한 번에 조회** — 패키지마다 `winget list --id`를 부르던 것을
+  `winget export` 한 번(JSON)으로 바꿨다. 실시간 백신 검사가 있는 PC에서 패키지당 약 14초,
+  10개에 139초 걸리던 조회가 1회 약 57초로 줄었다. JSON이라 UI 언어·열 잘림의 영향도 없다.
+  실패하면 기존 패키지별 조회로 돌아간다.
+- **프로필 캐시를 파일 하나로 합치고 자동 갱신** — 도구 유무 캐시와 zoxide init 캐시 두
+  파일을 `pwsh_profile_cache.ps1` 하나로 합쳤다. 첫 줄에 프로필·도구 exe의 수정 시각을 적어
+  두고 매번 비교해, 프로필을 고치거나 `winget upgrade zoxide` 등으로 exe가 바뀌면 자동으로
+  다시 만든다(예전에는 캐시를 지우기 전까지 옛 init을 계속 썼다). 수정 시각은 심볼릭 링크가
+  가리키는 실제 파일에서 읽고, 캐시는 임시 파일에 쓴 뒤 교체해 터미널 여러 개가 동시에 열려도
+  반쯤 쓰인 파일을 읽지 않는다. 시작 시간은 이전과 비슷하다
+  (측정상 둘 다 약 2.5~4초이며 대부분 PSReadLine 로드 시간).
 - **Windows 네이티브 설치 분기 정리** — 네이티브 도구가 셋으로 늘면서, codex 전용인
   symlink 우회·standalone 정리 재시도를 "Claude Code가 아니면"이 아니라 codex 여부로
   판별하도록 변경(다른 도구 설치 실패 시 Codex 설치 폴더를 지우지 않도록).
 
 ### Fixed
+- **네이티브 claude·codex가 이미 있으면 npm 사본이 영영 남던 문제** — npm 사본 제거가
+  네이티브를 새로 설치할 때만 실행돼, 네이티브가 이미 있는 PC에서는 "already installed"로
+  건너뛰며 npm 사본이 계속 남았다. Claude Code용 `~\.local\bin`은 사용자 PATH 끝에 붙으므로
+  (uv가 Python을 새로 설치할 때만 앞으로 옮김), Node를 먼저 설치한 PC에서는 `%APPDATA%\npm`이
+  앞에 와서 새 터미널에서도 옛 npm판이 실행될 수 있다. 이제 두 경로 모두에서 `npm ls`로 사본을
+  찾아 제거한다(같은 도구라 묻지 않음). 단, **네이티브 설치가 끝난 뒤에만**, 그리고 네이티브
+  폴더가 사용자·시스템 PATH에 있을 때만 지운다 — 그렇지 않으면 새 터미널에서 명령이 아예
+  사라질 수 있다. 네이티브가 이미 있는 Claude Code는 먼저 `~\.local\bin`을 PATH에 넣는다.
 - **Linux에서 zsh-history-substring-search가 한 번도 동작하지 않던 문제** — Ubuntu·Debian
   어느 버전에도 이 apt 패키지가 없어(packages.ubuntu.com·packages.debian.org 검색 결과 없음)
   설치가 "저장소에 없음"으로 조용히 건너뛰어졌고, `.zshrc` 블록은 존재하지 않는 `/usr/share`

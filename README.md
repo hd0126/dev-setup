@@ -143,15 +143,17 @@ fzf --version       # Ctrl+R 히스토리 검색
 |------|------|
 | **PowerShell 프롬프트** | 외부 바이너리 없이 순수 PowerShell로 구현(속도 우선). `.git/HEAD`를 직접 읽어 Git 브랜치 표시, 경로 단축, 직전 명령 성공/실패에 따라 ❯ 색상 변경. (Starship은 기본 설치하지 않음 — 메뉴에서 선택 가능) |
 | **zoxide** | `z <키워드>`로 방문 기록 기반 스마트 디렉토리 이동 |
-| **fzf** | `Ctrl+R` 히스토리 검색, `Ctrl+T` 파일 검색 |
+| **fzf** | `Ctrl+R` 히스토리 검색, `Ctrl+T` 파일 검색 (fd가 있으면 fd로 더 빠르게) |
+| **eza** | `ll` · `la` · `lt`(트리) — macOS·Linux와 같은 별칭 |
+| **bat · delta · tldr** | `bat 파일`로 문법 하이라이트 보기(PowerShell 기본 `cat`은 그대로), git diff는 delta로 하이라이트(기존 pager 설정이 없을 때만), `tldr 명령`으로 예시 위주 도움말 |
 | **cc / ccc / ccr** | `cc`=`claude --dangerously-skip-permissions`, `ccc`=`cc --continue`, `ccr`=`cc --resume` (bypass permissions on) |
 | **자동제안** | PSReadLine `PredictionSource History` — 입력 중 회색 제안, `→`로 수락 (zsh-autosuggestions 대응) |
 | **SSH agent** | ssh-agent 서비스가 **이미 실행 중일 때만** `.ssh` 폴더의 키를 자동 등록(`ssh-add`). 에이전트를 직접 시작하거나 소켓을 관리하지는 않음 |
 | **프로필 로드 시간** | `PowerShell loaded in {N}ms` — 터미널 시작 시 회색으로 표시 |
 
 ```powershell
-# 새 도구 설치 후 캐시 갱신
-Remove-Item ([IO.Path]::GetFullPath("$env:TEMP\pwsh_tools_cache.ps1"))
+# 새 도구를 직접 설치한 뒤 바로 반영하려면 (install.ps1로 설치했다면 자동)
+Remove-Item ([IO.Path]::GetFullPath("$env:TEMP\pwsh_profile_cache.ps1"))
 ```
 
 ---
@@ -704,19 +706,20 @@ claude plugin install andrej-karpathy-skills@karpathy-skills
 
 ### 🪟 Windows (PowerShell)
 
-프로필은 첫 실행 시 도구(zoxide·fzf·starship) 유무를 한 번만 검사해 캐시에 저장합니다.
-이후 실행에서는 캐시만 읽으므로 `Get-Command` 탐색 비용 없이 빠릅니다.
+프로필은 첫 실행 시 도구(zoxide·fzf·starship·eza·fd) 유무와 zoxide init 결과를 **파일 하나**
+(`$env:TEMP\pwsh_profile_cache.ps1`)에 저장합니다. 이후에는 프로필과 각 도구 exe의 수정 시각만
+비교하므로 `Get-Command`나 `zoxide.exe` 실행 없이 시작합니다.
+
+- **자동으로 다시 만드는 경우**: 프로필을 고쳤을 때, `winget upgrade zoxide`처럼 캐시에 기록된 도구가 바뀌거나 지워졌을 때
+- **직접 지워야 하는 경우**: install.ps1 없이 **새 도구를 따로 설치**했을 때(캐시를 만들 땐 없던 도구라 감지하지 못함). install.ps1은 실행할 때 캐시를 지워 줍니다.
 
 `GetFullPath`로 감싸는 이유: 계정명에 한글·공백이 있으면 `$env:TEMP`가 짧은 이름
 (`C:\Users\홍길동~1\...`)이 되는데, 이 경로로는 `Remove-Item`이 "지정한 경로 ...~1에
 개체가 없습니다" 에러를 내며 파일을 지우지 못합니다. 긴 경로로 바꿔 지우면 정상 동작합니다.
 
 ```powershell
-# 새 도구를 설치한 후 캐시 갱신 (필수)
-Remove-Item ([IO.Path]::GetFullPath("$env:TEMP\pwsh_tools_cache.ps1"))
-
-# zoxide init 캐시 재생성
-Remove-Item ([IO.Path]::GetFullPath("$env:TEMP\zoxide_init_cache.ps1"))
+# 새 도구를 따로 설치한 뒤 캐시 재생성 (다음 터미널부터 반영)
+Remove-Item ([IO.Path]::GetFullPath("$env:TEMP\pwsh_profile_cache.ps1"))
 ```
 
 ### 🐧 Linux / 🍎 macOS
