@@ -195,11 +195,32 @@ jobs:
             $cache = [IO.Path]::GetFullPath("$env:TEMP\pwsh_profile_cache.ps1")
             if (Test-Path $cache) {
               $head = "$(Get-Content $cache -TotalCount 1)"
-              Write-Host ("OK       profile cache, {0} tool stamp(s)" -f (($head -split "`t").Count - 2))
+              Write-Host ("OK       profile cache, {0} tool stamp(s)" -f (($head -split "`t").Count - 3))
             } else {
               Write-Host "MISSING  profile cache at $cache"
               pwsh -NoLogo -Command 'if ($global:DevSetupProfileCacheError) { "cache error: " + $global:DevSetupProfileCacheError.Exception.Message } else { "no cache error recorded" }'
               $fail++
+            }
+
+            # Regression (seen on a real PC): a shell that was opened BEFORE the install still
+            # has the old PATH. If it rebuilds the cache, it must not record the new tools as
+            # missing, or every new terminal loses `ll`/fd until the cache is deleted by hand.
+            # A minimal PATH (Windows dirs only) stands in for "opened before the install", so
+            # the check does not depend on where winget put the tools on this runner.
+            Remove-Item $cache -ErrorAction Ignore
+            $savedPath = $env:Path
+            $env:Path  = "$env:SystemRoot\system32;$env:SystemRoot;$env:SystemRoot\System32\WindowsPowerShell\v1.0"
+            $staleOut  = & (Join-Path $env:ProgramFiles 'PowerShell\7\pwsh.exe') -NoLogo -Command $probe 2>&1 | Out-String
+            $env:Path  = $savedPath
+            Write-Host "stale-PATH shell: $(($staleOut -split "`n" | Where-Object { $_ -match 'PROFILE-FLAGS' }) -join ' ')"
+            if ($staleOut -notmatch 'PROFILE-FLAGS zoxide=True fzf=True eza=True fd=True z=True ll=True') {
+              Write-Host "STALE    the stale-PATH shell itself could not see/run the new tools"; $fail++
+            }
+            $out2 = pwsh -NoLogo -Command $probe 2>&1 | Out-String
+            if ($out2 -match 'PROFILE-FLAGS zoxide=True fzf=True eza=True fd=True') {
+              Write-Host "OK       a stale-PATH shell rebuilding the cache did not hide new tools"
+            } else {
+              Write-Host "POISONED cache after a stale-PATH shell: $($out2.Trim())"; $fail++
             }
           }
           exit $fail
